@@ -76,7 +76,7 @@ class GTFSStatic:
 						except UnicodeDecodeError:
 							f.seek(0)
 							df = pd.read_csv(f, dtype=str, encoding="latin1", low_memory=False)
-					loaded[name] = df
+					loaded[name] = cls._normalise_table(name, df)
 			return cls(loaded)
 
 	@classmethod
@@ -93,20 +93,27 @@ class GTFSStatic:
 					except UnicodeDecodeError:
 						f.seek(0)
 						df = pd.read_csv(f, dtype=str, encoding="latin1", low_memory=False)
-				loaded[name] = df
+				loaded[name] = cls._normalise_table(name, df)
 
-				match name:
-					case "shapes":
-						df["shape_pt_sequence"] = pd.to_numeric(df["shape_pt_sequence"], errors="coerce")
-						df["shape_pt_lat"] = pd.to_numeric(df["shape_pt_lat"], errors="coerce")
-						df["shape_pt_lon"] = pd.to_numeric(df["shape_pt_lon"], errors="coerce")
-						df = df.sort_values(["shape_id", "shape_pt_sequence"])
-					case "stops":
-						df["stop_lat"] = pd.to_numeric(df["stop_lat"], errors="coerce")
-						df["stop_lon"] = pd.to_numeric(df["stop_lon"], errors="coerce")
-						df["location_type_enum"] = pd.to_numeric(df["location_type"], errors="coerce").map(LocationTypeEnum)
 
 		return cls(loaded)
+
+	@staticmethod
+	def _normalise_table(name: str, df: pd.DataFrame) -> pd.DataFrame:
+		match name:
+			case "shapes":
+				df["shape_pt_sequence"] = pd.to_numeric(df["shape_pt_sequence"], errors="coerce")
+				df["shape_pt_lat"] = pd.to_numeric(df["shape_pt_lat"], errors="coerce")
+				df["shape_pt_lon"] = pd.to_numeric(df["shape_pt_lon"], errors="coerce")
+				df = df.sort_values(["shape_id", "shape_pt_sequence"])
+			case "stops":
+				df["stop_lat"] = pd.to_numeric(df["stop_lat"], errors="coerce")
+				df["stop_lon"] = pd.to_numeric(df["stop_lon"], errors="coerce")
+				df["location_type_enum"] = pd.to_numeric(df["location_type"], errors="coerce").map(LocationTypeEnum)
+			case "stop_times":
+				df["stop_sequence"] = pd.to_numeric(df.get("stop_sequence"), errors="coerce")
+
+		return df
 
 	def search_stops(self, query: str, limit: int = 50) -> pd.DataFrame:
 		if self.stops.empty:

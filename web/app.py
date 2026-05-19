@@ -11,7 +11,7 @@ from services.routing_service import StopGraph, stops_for_display
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_ZIP_PATH = Path("./data/gtfs_schedule_sydneytrains.zip")
+DEFAULT_ZIP_PATH = Path("../data/gtfs_schedule_sydneytrains.zip")
 
 
 app = Flask(

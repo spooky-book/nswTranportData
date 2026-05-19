@@ -63,23 +63,6 @@ class GTFSStatic:
 		return self.tables.get("shapes", pd.DataFrame())
 
 	@classmethod
-	def from_zip(cls, zip_path: str, tables: Optional[List[str]] = None) -> "GTFSStatic":
-		tables = tables or DEFAULT_TABLES
-		with zipfile.ZipFile(zip_path) as zf:
-			loaded = {}
-			for name in tables:
-				fname = f"{name}.txt"
-				if fname in zf.namelist():
-					with zf.open(fname) as f:
-						try:
-							df = pd.read_csv(f, dtype=str, low_memory=False)
-						except UnicodeDecodeError:
-							f.seek(0)
-							df = pd.read_csv(f, dtype=str, encoding="latin1", low_memory=False)
-					loaded[name] = cls._normalise_table(name, df)
-			return cls(loaded)
-
-	@classmethod
 	def from_bytes(cls, content: bytes, tables: Optional[List[str]] = None) -> "GTFSStatic":
 		tables = tables or DEFAULT_TABLES
 		zf = zipfile.ZipFile(io.BytesIO(content))
@@ -89,27 +72,30 @@ class GTFSStatic:
 			if fname in zf.namelist():
 				with zf.open(fname) as f:
 					try:
-						df = pd.read_csv(f, dtype=str, low_memory=False)
+						match fname:
+							case "shapes.txt":
+								usecols = ["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence", "shape_dist_traveled"]
+								dtypes = {"shape_id": "string[pyarrow]", "shape_pt_lat": "float32", "shape_pt_lon": "float32", "shape_pt_sequence": "int32", "shape_dist_traveled": "float32"}
+								df = pd.read_csv(f, usecols=usecols, dtype=dtypes, engine="pyarrow")
+								df["shape_id"] = df["shape_id"].astype("category")
+								df = df.sort_values(["shape_id", "shape_pt_sequence"])
+							case _:
+								df = pd.read_csv(f, dtype=str, low_memory=False)
+
 					except UnicodeDecodeError:
 						f.seek(0)
 						df = pd.read_csv(f, dtype=str, encoding="latin1", low_memory=False)
 				loaded[name] = cls._normalise_table(name, df)
-
 
 		return cls(loaded)
 
 	@staticmethod
 	def _normalise_table(name: str, df: pd.DataFrame) -> pd.DataFrame:
 		match name:
-			case "shapes":
-				df["shape_pt_sequence"] = pd.to_numeric(df["shape_pt_sequence"], errors="coerce")
-				df["shape_pt_lat"] = pd.to_numeric(df["shape_pt_lat"], errors="coerce")
-				df["shape_pt_lon"] = pd.to_numeric(df["shape_pt_lon"], errors="coerce")
-				df = df.sort_values(["shape_id", "shape_pt_sequence"])
 			case "stops":
 				df["stop_lat"] = pd.to_numeric(df["stop_lat"], errors="coerce")
 				df["stop_lon"] = pd.to_numeric(df["stop_lon"], errors="coerce")
-				df["location_type_enum"] = pd.to_numeric(df["location_type"], errors="coerce").map(LocationTypeEnum)
+				df["location_type_enum"] = pd.to_numeric(df["location_type"], errors="coerce").map(LocationTypeEnum, na_action="ignore")
 			case "stop_times":
 				df["stop_sequence"] = pd.to_numeric(df.get("stop_sequence"), errors="coerce")
 

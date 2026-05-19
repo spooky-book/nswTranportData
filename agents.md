@@ -26,6 +26,9 @@ The project targets **Sydney / NSW public transport** exclusively.
 nswTransportData/
 ├── main.py                       # CLI entry point — downloads GTFS data & generates maps
 ├── constants.py                  # Shared enums (LocationTypeEnum)
+├── pyproject.toml                # Project metadata & dependencies (managed by uv)
+├── uv.lock                       # uv lockfile — pinned dependency versions
+├── .python-version               # Python version pin (3.14)
 │
 ├── loader/
 │   └── loader.py                 # GTFSStatic dataclass — parses GTFS zip into pandas DataFrames
@@ -55,9 +58,9 @@ nswTransportData/
 ├── maps/                         # Generated HTML map outputs
 │   └── gtfs_shapes_sydneyTrains.html
 │
-├── .venv/                        # Python virtual environment
+├── .venv/                        # Python virtual environment (managed by uv)
 ├── .idea/                        # PyCharm / JetBrains project config
-└── .gitignore
+└── .gitignore                    # Ignores .venv, data/, __pycache__, .idea/, etc.
 ```
 
 ---
@@ -186,13 +189,43 @@ TfNSW API  ──(HTTPS + API key)──►  main.py  ──(zip bytes)──►
 
 ---
 
-## 5. Dependencies
+## 5. Package Management
 
-Installed in `.venv` (Python virtual environment):
+This project uses **[uv](https://docs.astral.sh/uv/)** as its package manager and virtual
+environment manager (replacing pip).
+
+- **`pyproject.toml`** — Defines project metadata and all dependencies.
+- **`uv.lock`** — Lockfile with exact pinned versions for reproducible installs.
+- **`.python-version`** — Pins the Python version to **3.14** (managed by uv).
+- **`.venv/`** — Virtual environment created and managed by uv.
+
+### Key Commands
+
+```bash
+# Install all dependencies (creates .venv if needed)
+uv sync
+
+# Add a new dependency
+uv add <package>
+
+# Remove a dependency
+uv remove <package>
+
+# Run a script within the managed environment
+uv run python main.py
+
+# Or activate the venv and run directly
+# Windows:  .venv\Scripts\activate
+# Unix:     source .venv/bin/activate
+python main.py
+```
+
+### Dependencies
 
 | Package        | Version  | Purpose                                |
 |----------------|----------|----------------------------------------|
 | pandas         | 2.3.3    | DataFrames for GTFS table manipulation |
+| pandas-stubs   | 2.3.2    | Type stubs for pandas                  |
 | pyarrow        | 22.0.0   | High-performance CSV engine for shapes |
 | numpy          | 2.3.4    | Array operations (coordinate swapping) |
 | folium         | 0.20.0   | Interactive Leaflet.js map generation  |
@@ -200,7 +233,8 @@ Installed in `.venv` (Python virtual environment):
 | flask          | 3.1.2    | Web framework for route finder app     |
 | jinja2         | 3.1.6    | Template engine (Flask dependency)     |
 | requests       | 2.32.5   | HTTP client for TfNSW API calls        |
-| tqdm           | —        | Download progress bars                 |
+| tqdm           | 4.67.1   | Download progress bars                 |
+| ruff           | ≥0.15.13 | Linting & formatting                   |
 | networkx       | 3.5      | Graph library (installed but unused)   |
 | partridge      | 1.1.2    | GTFS library (installed but unused)    |
 
@@ -212,7 +246,7 @@ Installed in `.venv` (Python virtual environment):
 ## 6. Environment Variables
 
 | Variable                 | Required By        | Description                        |
-|--------------------------|--------------------|------------------------------------|
+|--------------------------|--------------------|-------------------------------------|
 | `TRANSPORT_NSW_API_KEY`  | `main.py`          | TfNSW API key for GTFS downloads   |
 | `TFNSW_API_KEY`          | `loader/loader.py` | Alternative API key (download fn)  |
 | `GTFS_STATIC_ZIP`        | `web/app.py`       | Override path to GTFS zip for web   |
@@ -262,27 +296,48 @@ The project works with standard GTFS tables:
    `TFNSW_API_KEY`.
 4. **Shape ID type mismatch** — Comment in `_pack_make_feature()` notes that shape IDs are strings
    vs numbers, causing issues between trains and light rail.
-5. **No `.gitignore` content** — The `.gitignore` file is empty; `data/`, `.venv/`, `__pycache__/`,
-   `maps/`, and `.idea/` should probably be ignored.
-6. **No `requirements.txt`** or `pyproject.toml` — dependencies are only tracked in the venv.
-7. **Commented-out code** — `map_service.py` contains ~40 lines of old commented-out implementation.
-8. **Mixed indentation** — `routing_service.py` uses spaces; other files use tabs.
+5. **Commented-out code** — `map_service.py` contains ~40 lines of old commented-out implementation.
+6. **Mixed indentation** — `routing_service.py` uses spaces; other files use tabs.
 
 ---
 
 ## 10. How to Run
 
-### Map Generation (CLI)
+### Prerequisites
+
+- **[uv](https://docs.astral.sh/uv/)** installed (`pip install uv` or see uv docs for other methods).
+- A **TfNSW API key** from [opendata.transport.nsw.gov.au](https://opendata.transport.nsw.gov.au/).
+
+### Install Dependencies
+
 ```bash
+uv sync
+```
+
+### Map Generation (CLI)
+
+```bash
+# Set your API key
+# Windows (PowerShell):
+$env:TRANSPORT_NSW_API_KEY = "your-api-key"
+# Unix/macOS:
 export TRANSPORT_NSW_API_KEY="your-api-key"
-python main.py
+
+# Run the map generator
+uv run python main.py
 # Outputs: maps/gtfs_shapes_sydneyTrains.html
 ```
 
 ### Web App (Flask)
+
 ```bash
-export GTFS_STATIC_ZIP="path/to/gtfs.zip"  # optional
-python web/app.py
+# Optionally set a GTFS zip path
+# Windows (PowerShell):
+$env:GTFS_STATIC_ZIP = "path/to/gtfs.zip"
+# Unix/macOS:
+export GTFS_STATIC_ZIP="path/to/gtfs.zip"
+
+uv run python web/app.py
 # Runs on http://localhost:5000
 ```
 
@@ -290,8 +345,9 @@ python web/app.py
 
 ## 11. Development Notes
 
+- **Package manager**: [uv](https://docs.astral.sh/uv/) — manages Python version, virtual environment, and dependencies.
 - **IDE**: PyCharm (JetBrains), based on `.idea/` project files.
-- **Python version**: Uses `match/case` statements → requires **Python 3.10+**.
+- **Python version**: **3.14** (pinned via `.python-version`, managed by uv).
+- **Linting / Formatting**: [Ruff](https://docs.astral.sh/ruff/) is included as a dependency.
 - **No tests** exist in the project.
-- **No linting/formatting** config files present.
 - The project is a **personal/exploratory tool** — not packaged for distribution.

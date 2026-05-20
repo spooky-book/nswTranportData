@@ -1,6 +1,7 @@
 import os
 import io
 import zipfile
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Dict, Optional, List
 import pandas as pd
@@ -87,6 +88,42 @@ class GTFSStatic:
 						df = pd.read_csv(f, dtype=str, encoding="latin1", low_memory=False)
 				loaded[name] = cls._normalise_table(name, df)
 
+		return cls(loaded)
+
+	@classmethod
+	def from_zip(cls, path: str, tables: Optional[List[str]] = None) -> "GTFSStatic":
+		p = Path(path)
+		if p.is_dir():
+			return cls.from_dir(path, tables=tables)
+		with open(path, "rb") as f:
+			return cls.from_bytes(f.read(), tables=tables)
+
+	@classmethod
+	def from_dir(cls, dir_path: str, tables: Optional[List[str]] = None) -> "GTFSStatic":
+		tables = tables or DEFAULT_TABLES
+		loaded = {}
+		dp = Path(dir_path)
+		for name in tables:
+			fpaths = [dp / f"{name}.txt", dp / f"{name}.csv"]
+			found_path = None
+			for fp in fpaths:
+				if fp.exists():
+					found_path = fp
+					break
+			if found_path:
+				try:
+					match name:
+						case "shapes":
+							usecols = ["shape_id", "shape_pt_lat", "shape_pt_lon", "shape_pt_sequence", "shape_dist_traveled"]
+							dtypes = {"shape_id": "string[pyarrow]", "shape_pt_lat": "float32", "shape_pt_lon": "float32", "shape_pt_sequence": "int32", "shape_dist_traveled": "float32"}
+							df = pd.read_csv(found_path, usecols=usecols, dtype=dtypes, engine="pyarrow")
+							df["shape_id"] = df["shape_id"].astype("category")
+							df = df.sort_values(["shape_id", "shape_pt_sequence"])
+						case _:
+							df = pd.read_csv(found_path, dtype=str, low_memory=False)
+				except UnicodeDecodeError:
+					df = pd.read_csv(found_path, dtype=str, encoding="latin1", low_memory=False)
+				loaded[name] = cls._normalise_table(name, df)
 		return cls(loaded)
 
 	@staticmethod

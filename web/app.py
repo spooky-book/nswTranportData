@@ -85,11 +85,15 @@ def compute_route() -> Any:
     destination = str(data.get("destination_stop_id", "")).strip()
 
     if not origin or not destination:
-        return jsonify({"error": "Both origin_stop_id and destination_stop_id are required."}), 400
+        return jsonify(
+            {"error": "Both origin_stop_id and destination_stop_id are required."}
+        ), 400
 
     path = _graph.shortest_path(origin, destination)
     if not path:
-        return jsonify({"error": "No connection found between the selected stops."}), 404
+        return jsonify(
+            {"error": "No connection found between the selected stops."}
+        ), 404
 
     stops: List[Dict[str, Any]] = [_graph.stop_details(stop_id) for stop_id in path]
     return jsonify({"stops": stops})

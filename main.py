@@ -14,23 +14,23 @@ from services.map_service import generate_map_all_routes, add_train_stops_to_map
 
 def main():
     # gtfs = get_complete_gtfs()
-    gtfs1 = get_schedule_gtfs_light_rail_parramatta()
-    gtfs2 = get_schedule_gtfs_light_rail_inner_west()
+    # gtfs1 = get_schedule_gtfs_light_rail_parramatta()
+    # gtfs2 = get_schedule_gtfs_light_rail_inner_west()
     # gtfs3 = get_schedule_gtfs_light_rail_newcastle()
-    # gtfs4 = get_schedule_gtfs_sydney_trains()
+    gtfs4 = get_schedule_gtfs_sydney_trains()
     # gtfs5 = get_schedule_gtfs_light_rail_city_and_south_east()
     # gtfs6 = get_schedule_gtfs_ferries_mff()
     # gtfs7 = get_schedule_gtfs_ferries_sydney_ferries()
     # gtfs8 = get_schedule_gtfs_nsw_trains()
 
-    map_all_routes = generate_map_all_routes(gtfs1, max_workers=3)
-    map_all_stations = add_train_stops_to_map(
-        gtfs1, m=map_all_routes, display_platforms=True
-    )
-    map_all_routes = generate_map_all_routes(gtfs2, max_workers=3, m=map_all_stations)
-    map_all_stations = add_train_stops_to_map(
-        gtfs2, m=map_all_routes, display_platforms=False
-    )
+    # map_all_routes = generate_map_all_routes(gtfs1, max_workers=3)
+    # map_all_stations = add_train_stops_to_map(
+    #     gtfs1, m=map_all_routes, display_platforms=True
+    # )
+    # map_all_routes = generate_map_all_routes(gtfs2, max_workers=3, m=map_all_stations)
+    # map_all_stations = add_train_stops_to_map(
+    #     gtfs2, m=map_all_routes, display_platforms=False
+    # )
     # map_all_routes = generate_map_all_routes(gtfs3, max_workers=3, m=map_all_stations)
     # map_all_stations = add_train_stops_to_map(gtfs3, m=map_all_routes, display_platforms=False)
     # map_all_routes = generate_map_all_routes(gtfs4, max_workers=3, m=map_all_stations)
@@ -43,7 +43,7 @@ def main():
     # map_all_stations = add_train_stops_to_map(gtfs7, m=map_all_routes, display_platforms=False)
     # map_all_routes = generate_map_all_routes(gtfs8, max_workers=3, m=map_all_stations)
     # map_all_stations = add_train_stops_to_map(gtfs8, m=map_all_routes, display_platforms=False)
-    map_all_stations.save("./maps/gtfs_shapes_sydneyTrains.html")
+    # map_all_stations.save("./maps/gtfs_shapes_sydneyTrains.html")
     # map_all_stations.save("./maps/gtfs_shapes_complete.html")
 
 

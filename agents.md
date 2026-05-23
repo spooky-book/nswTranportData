@@ -36,7 +36,9 @@ nswTransportData/
 │   ├── config.py                 # Paths, env vars, transport mode definitions
 │   ├── api/
 │   │   ├── __init__.py
-│   │   └── stations.py           # /api/stations Blueprint (search & list stations)
+│   │   ├── route_stats.py        # /api/route-stats Blueprint (direct train stats)
+│   │   ├── stations.py           # /api/stations Blueprint (search & list stations)
+│   │   └── stop_stats.py         # /api/stop-stats Blueprint (station-level stats)
 │   └── gtfs/
 │       ├── __init__.py
 │       ├── downloader.py         # Downloads & caches GTFS zips from TfNSW API
@@ -182,7 +184,7 @@ class LocationTypeEnum(IntEnum):
 ### 3.9 `src/app.py` — New Flask Application Factory
 
 - **`create_app()`**: Flask application factory that registers blueprints.
-- Registers the `stations_bp` blueprint from `src/api/stations.py`.
+- Registers the `stations_bp`, `stop_stats_bp`, and `route_stats_bp` blueprints.
 - Exposes a root `GET /` endpoint returning a JSON API index.
 - Run directly with `uv run python src/app.py` (serves on port from `PORT` env var, default 5000).
 
@@ -215,8 +217,22 @@ class LocationTypeEnum(IntEnum):
 - **`get_feed(mode)`**: Returns a `gtfs_kit.Feed` for the given mode.
   - Uses an in-memory dict `_feed_cache` — subsequent calls for the same mode return instantly.
   - Calls `get_gtfs_zip_path(mode)` then `gtfs_kit.read_feed(zip_path, dist_units="km")`.
+  - Runs **`_filter_non_passenger_services`** on load: Globally strips out "Empty Train" deadheads and pass-through timing points (`pickup_type=1` AND `drop_off_type=1`) from `trips` and `stop_times` to ensure accurate passenger statistics.
 - **`clear_cache()`**: Clears the in-memory feed cache.
 - The `Feed` object exposes all GTFS tables as pandas DataFrames (`.stops`, `.routes`, etc.).
+
+### 3.14 `src/api/stop_stats.py` — Stop Stats Blueprint
+
+- **`POST /api/stop-stats`** — computes daily service statistics per station.
+  - Aggregates stats across all child platforms for a parent station.
+  - Returns `{num_trips, num_routes, start_time, end_time}`.
+  - Resolves station ID -> child platform IDs -> `feed.compute_stop_stats()` -> aggregates back to station level.
+
+### 3.15 `src/api/route_stats.py` — Route Stats Blueprint
+
+- **`POST /api/route-stats`** — computes point-to-point service statistics between stations (direct trains only).
+  - Matches departures at the origin platforms with arrivals at the destination platforms.
+  - Returns `{num_trips, num_routes, start_time, end_time, min_headway_secs, travel_time_mean_secs, ...}`.
 
 ---
 

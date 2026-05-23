@@ -67,6 +67,8 @@ The Stations API starts at [http://localhost:5000](http://localhost:5000). Avail
 | `GET /api/stations` | List all stations for the default mode (Sydney Trains) |
 | `GET /api/stations?search=central` | Search stations by name |
 | `GET /api/stations?mode=light_rail_parramatta` | List stations for a specific transport mode |
+| `POST /api/stop-stats` | Compute daily service statistics per station |
+| `POST /api/route-stats` | Compute point-to-point service statistics between stations (direct trains) |
 
 > **Note:** On first request for a mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). Subsequent requests use the in-memory cache and are fast.
 
@@ -96,7 +98,9 @@ nswTransportData/
 │   ├── app.py               # Flask app factory & entry point
 │   ├── config.py            # Paths, env vars, transport mode definitions
 │   ├── api/
-│   │   └── stations.py      # /api/stations Blueprint
+│   │   ├── route_stats.py   # /api/route-stats Blueprint
+│   │   ├── stations.py      # /api/stations Blueprint
+│   │   └── stop_stats.py    # /api/stop-stats Blueprint
 │   └── gtfs/
 │       ├── downloader.py    # Downloads & caches GTFS zips
 │       └── loader.py        # Loads GTFS into gtfs_kit.Feed (in-memory cache)

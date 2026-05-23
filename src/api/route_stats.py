@@ -33,10 +33,23 @@ Response body (JSON):
             "end_time": "25:11:01",
             "min_headway_secs": 120,
             "mean_headway_secs": 534,
+            "median_headway_secs": 420,
+            "mode_headway_secs": 900,
             "max_headway_secs": 900,
             "travel_time_min_secs": 1440,
             "travel_time_mean_secs": 1860,
-            "travel_time_max_secs": 2340
+            "travel_time_median_secs": 1800,
+            "travel_time_mode_secs": 1800,
+            "travel_time_max_secs": 2340,
+            "trips": [
+                {
+                    "trip_id": "845A.1373.155.128.A.8.89773032",
+                    "route_id": "WST_2d",
+                    "departure_time": "05:29:00",
+                    "arrival_time": "06:00:00",
+                    "travel_secs": 1860
+                }
+            ]
         }
     ]
 }
@@ -244,9 +257,14 @@ def get_route_stats():
                     "max_headway_secs": None,
                     "min_headway_secs": None,
                     "mean_headway_secs": None,
+                    "median_headway_secs": None,
+                    "mode_headway_secs": None,
                     "travel_time_min_secs": None,
                     "travel_time_max_secs": None,
                     "travel_time_mean_secs": None,
+                    "travel_time_median_secs": None,
+                    "travel_time_mode_secs": None,
+                    "trips": []
                 }
             )
             continue
@@ -274,6 +292,13 @@ def get_route_stats():
             if not pd.isna(day_trips["travel_secs"].mean())
             else None
         )
+        t_median = (
+            int(day_trips["travel_secs"].median())
+            if not pd.isna(day_trips["travel_secs"].median())
+            else None
+        )
+        t_mode_series = day_trips["travel_secs"].mode()
+        t_mode = int(t_mode_series.iloc[0]) if not t_mode_series.empty else None
 
         # Headways (only within headway window)
         window_trips = day_trips[
@@ -285,8 +310,21 @@ def get_route_stats():
             max_h = int(np.max(diffs))
             min_h = int(np.min(diffs))
             mean_h = int(np.mean(diffs))
+            median_h = int(np.median(diffs))
+            mode_h_series = pd.Series(diffs).mode()
+            mode_h = int(mode_h_series.iloc[0]) if not mode_h_series.empty else None
         else:
-            max_h = min_h = mean_h = None
+            max_h = min_h = mean_h = median_h = mode_h = None
+            
+        trips_list = []
+        for _, row in day_trips.iterrows():
+            trips_list.append({
+                "trip_id": row["trip_id"],
+                "route_id": row["route_id"],
+                "departure_time": row["dep_A"],
+                "arrival_time": row["arr_B"],
+                "travel_secs": int(row["travel_secs"])
+            })
 
         date_records.append(
             {
@@ -298,9 +336,14 @@ def get_route_stats():
                 "max_headway_secs": max_h,
                 "min_headway_secs": min_h,
                 "mean_headway_secs": mean_h,
+                "median_headway_secs": median_h,
+                "mode_headway_secs": mode_h,
                 "travel_time_min_secs": t_min,
                 "travel_time_max_secs": t_max,
                 "travel_time_mean_secs": t_mean,
+                "travel_time_median_secs": t_median,
+                "travel_time_mode_secs": t_mode,
+                "trips": trips_list
             }
         )
 

@@ -192,15 +192,16 @@ def get_route_stats():
 
     # We need the full stop_times subset for our platforms to find valid trips
     st = feed.stop_times[
-        ["trip_id", "stop_id", "arrival_time", "departure_time", "stop_sequence"]
+        ["trip_id", "stop_id", "arrival_time", "departure_time", "stop_sequence", "pickup_type", "drop_off_type"]
     ]
 
-    # Platform A departures
-    st_A = st[st["stop_id"].isin(platforms_A)][
+    # Platform A departures (must allow pickup: != 1)
+    st_A = st[st["stop_id"].isin(platforms_A) & (st["pickup_type"] != 1)][
         ["trip_id", "departure_time", "stop_sequence"]
     ].rename(columns={"departure_time": "dep_A", "stop_sequence": "seq_A"})
-    # Platform B arrivals
-    st_B = st[st["stop_id"].isin(platforms_B)][
+    
+    # Platform B arrivals (must allow drop off: != 1)
+    st_B = st[st["stop_id"].isin(platforms_B) & (st["drop_off_type"] != 1)][
         ["trip_id", "arrival_time", "stop_sequence"]
     ].rename(columns={"arrival_time": "arr_B", "stop_sequence": "seq_B"})
 

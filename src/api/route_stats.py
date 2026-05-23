@@ -10,8 +10,8 @@ Request body (JSON, origin and destination required):
     "origin_stop_id": "200060",       // parent station ID for origin
     "destination_stop_id": "215020",  // parent station ID for destination
     "dates": ["20260523"],            // YYYYMMDD list; default: today or first feed date
-    "headway_start_time": "07:00:00", // headway window start (default: 07:00:00)
-    "headway_end_time":   "19:00:00"  // headway window end   (default: 19:00:00)
+    "time_window_start": "00:00:00",  // filter all stats to trips departing after this time
+    "time_window_end":   "29:59:59"   // filter all stats to trips departing before this time
 }
 
 Response body (JSON):
@@ -23,7 +23,7 @@ Response body (JSON):
     "destination_name": "Parramatta Station",
     "dates_used": ["20260523"],
     "warning": null,
-    "headway_window": {"start": "07:00:00", "end": "19:00:00"},
+    "time_window": {"start": "00:00:00", "end": "29:59:59"},
     "dates": [
         {
             "date": "20260523",
@@ -64,11 +64,12 @@ from api.stop_stats import (
     _resolve_dates,
     _validate_date,
     _validate_time,
-    _DEFAULT_HEADWAY_START,
-    _DEFAULT_HEADWAY_END,
 )
 
 route_stats_bp = Blueprint("route_stats", __name__, url_prefix="/api")
+
+_DEFAULT_WINDOW_START = "00:00:00"
+_DEFAULT_WINDOW_END = "29:59:59"
 
 
 def _time_to_seconds(t: str) -> int:
@@ -125,21 +126,21 @@ def get_route_stats():
                 return jsonify({"error": err}), 400
         requested_dates = raw_dates
 
-    # ── Parse & validate headway window ───────────────────────────────────
-    headway_start = body.get("headway_start_time", _DEFAULT_HEADWAY_START)
-    headway_end = body.get("headway_end_time", _DEFAULT_HEADWAY_END)
+    # ── Parse & validate time window ───────────────────────────────────────
+    window_start = body.get("time_window_start", _DEFAULT_WINDOW_START)
+    window_end = body.get("time_window_end", _DEFAULT_WINDOW_END)
 
-    if not isinstance(headway_start, str) or not isinstance(headway_end, str):
-        return jsonify({"error": "Headway times must be strings (HH:MM:SS)."}), 400
+    if not isinstance(window_start, str) or not isinstance(window_end, str):
+        return jsonify({"error": "Time window values must be strings (HH:MM:SS)."}), 400
 
-    err = _validate_time(headway_start, "headway_start_time") or _validate_time(
-        headway_end, "headway_end_time"
+    err = _validate_time(window_start, "time_window_start") or _validate_time(
+        window_end, "time_window_end"
     )
     if err:
         return jsonify({"error": err}), 400
 
-    h_start_sec = _time_to_seconds(headway_start)
-    h_end_sec = _time_to_seconds(headway_end)
+    w_start_sec = _time_to_seconds(window_start)
+    w_end_sec = _time_to_seconds(window_end)
 
     # ── Load feed ──────────────────────────────────────────────────────────
     try:
@@ -245,6 +246,11 @@ def get_route_stats():
 
         # Filter our pre-computed direct trips to this date
         day_trips = direct[direct["trip_id"].isin(active_trips)].copy()
+        
+        # Filter by the requested time window
+        day_trips = day_trips[
+            (day_trips["dep_sec"] >= w_start_sec) & (day_trips["dep_sec"] <= w_end_sec)
+        ]
 
         if day_trips.empty:
             date_records.append(
@@ -300,13 +306,9 @@ def get_route_stats():
         t_mode_series = day_trips["travel_secs"].mode()
         t_mode = int(t_mode_series.iloc[0]) if not t_mode_series.empty else None
 
-        # Headways (only within headway window)
-        window_trips = day_trips[
-            (day_trips["dep_sec"] >= h_start_sec) & (day_trips["dep_sec"] <= h_end_sec)
-        ]
-
-        if len(window_trips) > 1:
-            diffs = np.diff(window_trips["dep_sec"].values)
+        # Headways
+        if len(day_trips) > 1:
+            diffs = np.diff(day_trips["dep_sec"].values)
             max_h = int(np.max(diffs))
             min_h = int(np.min(diffs))
             mean_h = int(np.mean(diffs))
@@ -356,7 +358,7 @@ def get_route_stats():
             "destination_name": dest_name,
             "dates_used": dates_to_use,
             "warning": date_warning,
-            "headway_window": {"start": headway_start, "end": headway_end},
+            "time_window": {"start": window_start, "end": window_end},
             "dates": date_records,
         }
     )

@@ -36,6 +36,7 @@ def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
 
     feed = gk.read_feed(str(zip_path), dist_units="km")
     _normalise_feed(feed)
+    _filter_non_passenger_services(feed)
     _feed_cache[mode] = feed
 
     print(f"[loader] Feed loaded: {len(feed.stops)} stops, {len(feed.routes)} routes")
@@ -84,6 +85,46 @@ def _normalise_feed(feed: gk.Feed) -> None:
             .where(df[nullable_cols].notna(), other=None)
         )
         setattr(feed, attr, df)
+
+
+def _filter_non_passenger_services(feed: gk.Feed) -> None:
+    """
+    Remove trips and stop times that do not serve passengers.
+    
+    This globally strips out "Empty Train" deadheads and pass-through
+    timing points, ensuring all stats, routes, and maps only reflect
+    trains passengers can actually board. This reduces memory usage and
+    simplifies routing/stats logic globally.
+    """
+    import pandas as pd
+
+    if getattr(feed, "trips", None) is None or getattr(feed, "stop_times", None) is None:
+        return
+
+    # 1. Identify Empty Trains
+    tr = feed.trips
+    if "trip_headsign" in tr.columns:
+        empty_mask = tr["trip_headsign"].str.contains("Empty Train", case=False, na=False)
+        empty_trips = tr[empty_mask]["trip_id"]
+        feed.trips = tr[~empty_mask]
+    else:
+        empty_trips = pd.Series(dtype=str)
+
+    # 2. Filter stop_times
+    st = feed.stop_times
+    
+    # Remove stop_times belonging to empty trips
+    st = st[~st["trip_id"].isin(empty_trips)]
+
+    # Remove pass-through stops (where train neither picks up nor drops off)
+    # GTFS standard: 1 = no pickup / no drop off. Missing value (NaN) implies 0 (regular).
+    # Missing values safely evaluate to False when compared to 1.
+    if "pickup_type" in st.columns and "drop_off_type" in st.columns:
+        pickup = st["pickup_type"]
+        dropoff = st["drop_off_type"]
+        st = st[~((pickup == 1) & (dropoff == 1))]
+    
+    feed.stop_times = st
 
 
 def clear_cache() -> None:

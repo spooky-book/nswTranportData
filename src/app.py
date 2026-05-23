@@ -8,6 +8,8 @@ from flask import Flask
 
 from api.stations import stations_bp
 from api.stops import stops_bp
+from api.stop_stats import stop_stats_bp
+from api.route_stats import route_stats_bp
 from config import FLASK_PORT
 
 
@@ -18,6 +20,8 @@ def create_app() -> Flask:
     # Register blueprints
     app.register_blueprint(stations_bp)
     app.register_blueprint(stops_bp)
+    app.register_blueprint(stop_stats_bp)
+    app.register_blueprint(route_stats_bp)
 
     @app.route("/")
     def index():
@@ -36,6 +40,12 @@ def create_app() -> Flask:
                 "stops_entrances": "/api/stops?location_type=2",
                 "stops_search": "/api/stops?search=<query>",
                 "stops_mode": "/api/stops?mode=<transport_mode>&location_type=<0-4>",
+                # Stop statistics endpoint
+                "stop_stats": "POST /api/stop-stats",
+                "stop_stats_docs": "See endpoint docstring for full request/response schema",
+                # Route statistics endpoint
+                "route_stats": "POST /api/route-stats",
+                "route_stats_docs": "See endpoint docstring for full request/response schema",
             },
         }
 

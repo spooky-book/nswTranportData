@@ -32,7 +32,7 @@ _LOCATION_TYPE_LABELS = {
 @stops_bp.route("/stops", methods=["GET"])
 def get_stops():
     """
-    Return stops from the GTFS feed, optionally filtered by location_type.
+    Return stops from the GTFS feed, optionally filtered by location_type. This is generic version of stations
 
     Query parameters:
         search        (str, optional): Case-insensitive substring filter on stop_name.
@@ -74,9 +74,11 @@ def get_stops():
         try:
             location_type_filter = int(raw_location_type)
         except ValueError:
-            return jsonify({
-                "error": f"Invalid location_type '{raw_location_type}'. Must be an integer (0–4)."
-            }), 400
+            return jsonify(
+                {
+                    "error": f"Invalid location_type '{raw_location_type}'. Must be an integer (0–4)."
+                }
+            ), 400
 
     try:
         feed = get_feed(mode)
@@ -102,7 +104,12 @@ def get_stops():
 
     # Select only the columns we want to expose
     columns_to_keep = [
-        "stop_id", "stop_name", "stop_lat", "stop_lon", "parent_station", "location_type"
+        "stop_id",
+        "stop_name",
+        "stop_lat",
+        "stop_lon",
+        "parent_station",
+        "location_type",
     ]
     result_df = stops_df.reindex(columns=columns_to_keep)
 
@@ -114,7 +121,9 @@ def get_stops():
     # Attach a human-readable label for each stop's location_type
     for record in records:
         lt = record.get("location_type")
-        record["location_type_label"] = _LOCATION_TYPE_LABELS.get(lt) if lt is not None else None
+        record["location_type_label"] = (
+            _LOCATION_TYPE_LABELS.get(lt) if lt is not None else None
+        )
 
     return jsonify(
         {

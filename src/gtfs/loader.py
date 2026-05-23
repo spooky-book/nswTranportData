@@ -62,8 +62,16 @@ def _normalise_feed(feed: gk.Feed) -> None:
     """
     import pandas as pd
 
-    for attr in ("stops", "routes", "trips", "agency", "calendar",
-                 "calendar_dates", "stop_times", "shapes"):
+    for attr in (
+        "stops",
+        "routes",
+        "trips",
+        "agency",
+        "calendar",
+        "calendar_dates",
+        "stop_times",
+        "shapes",
+    ):
         df = getattr(feed, attr, None)
         if df is None or df.empty:
             continue
@@ -71,7 +79,8 @@ def _normalise_feed(feed: gk.Feed) -> None:
         # Find columns that use Pandas nullable extension types (Int32, string, etc.)
         # These are the columns whose NA values are pd.NA (not float nan).
         nullable_cols = [
-            col for col, dtype in df.dtypes.items()
+            col
+            for col, dtype in df.dtypes.items()
             if pd.api.types.is_extension_array_dtype(dtype)
         ]
         if not nullable_cols:
@@ -90,7 +99,7 @@ def _normalise_feed(feed: gk.Feed) -> None:
 def _filter_non_passenger_services(feed: gk.Feed) -> None:
     """
     Remove trips and stop times that do not serve passengers.
-    
+
     This globally strips out "Empty Train" deadheads and pass-through
     timing points, ensuring all stats, routes, and maps only reflect
     trains passengers can actually board. This reduces memory usage and
@@ -98,13 +107,18 @@ def _filter_non_passenger_services(feed: gk.Feed) -> None:
     """
     import pandas as pd
 
-    if getattr(feed, "trips", None) is None or getattr(feed, "stop_times", None) is None:
+    if (
+        getattr(feed, "trips", None) is None
+        or getattr(feed, "stop_times", None) is None
+    ):
         return
 
     # 1. Identify Empty Trains
     tr = feed.trips
     if "trip_headsign" in tr.columns:
-        empty_mask = tr["trip_headsign"].str.contains("Empty Train", case=False, na=False)
+        empty_mask = tr["trip_headsign"].str.contains(
+            "Empty Train", case=False, na=False
+        )
         empty_trips = tr[empty_mask]["trip_id"]
         feed.trips = tr[~empty_mask]
     else:
@@ -112,7 +126,7 @@ def _filter_non_passenger_services(feed: gk.Feed) -> None:
 
     # 2. Filter stop_times
     st = feed.stop_times
-    
+
     # Remove stop_times belonging to empty trips
     st = st[~st["trip_id"].isin(empty_trips)]
 
@@ -123,7 +137,7 @@ def _filter_non_passenger_services(feed: gk.Feed) -> None:
         pickup = st["pickup_type"]
         dropoff = st["drop_off_type"]
         st = st[~((pickup == 1) & (dropoff == 1))]
-    
+
     feed.stop_times = st
 
 

@@ -66,7 +66,12 @@ def get_stations():
 
     # Select only the fields we want to expose, filling in any missing columns with None
     columns_to_keep = [
-        "stop_id", "stop_name", "stop_lat", "stop_lon", "parent_station", "location_type"
+        "stop_id",
+        "stop_name",
+        "stop_lat",
+        "stop_lon",
+        "parent_station",
+        "location_type",
     ]
     result_df = stations_df.reindex(columns=columns_to_keep)
 

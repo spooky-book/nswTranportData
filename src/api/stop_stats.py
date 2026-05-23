@@ -265,7 +265,9 @@ def get_stop_stats():
 
     if raw_stop_ids is not None:
         if not isinstance(raw_stop_ids, list):
-            return jsonify({"error": "'stop_ids' must be a JSON array of strings."}), 400
+            return jsonify(
+                {"error": "'stop_ids' must be a JSON array of strings."}
+            ), 400
         if not all(isinstance(s, str) for s in raw_stop_ids):
             return jsonify({"error": "Every item in 'stop_ids' must be a string."}), 400
         stop_ids_filter = [s.strip() for s in raw_stop_ids if s.strip()]
@@ -276,10 +278,14 @@ def get_stop_stats():
     raw_dates = body.get("dates")
     if raw_dates is not None:
         if not isinstance(raw_dates, list):
-            return jsonify({"error": "'dates' must be a JSON array of YYYYMMDD strings."}), 400
+            return jsonify(
+                {"error": "'dates' must be a JSON array of YYYYMMDD strings."}
+            ), 400
         for d in raw_dates:
             if not isinstance(d, str):
-                return jsonify({"error": f"Each date must be a string, got: {d!r}"}), 400
+                return jsonify(
+                    {"error": f"Each date must be a string, got: {d!r}"}
+                ), 400
             err = _validate_date(d)
             if err:
                 return jsonify({"error": err}), 400
@@ -292,9 +298,13 @@ def get_stop_stats():
     headway_end = body.get("headway_end_time", _DEFAULT_HEADWAY_END)
 
     if not isinstance(headway_start, str):
-        return jsonify({"error": "'headway_start_time' must be a string (HH:MM:SS)."}), 400
+        return jsonify(
+            {"error": "'headway_start_time' must be a string (HH:MM:SS)."}
+        ), 400
     if not isinstance(headway_end, str):
-        return jsonify({"error": "'headway_end_time' must be a string (HH:MM:SS)."}), 400
+        return jsonify(
+            {"error": "'headway_end_time' must be a string (HH:MM:SS)."}
+        ), 400
 
     err = _validate_time(headway_start, "headway_start_time")
     if err:
@@ -323,21 +333,31 @@ def get_stop_stats():
     # ── Build station → platform mapping ──────────────────────────────────
     # Only consider stops with location_type=1 as stations.
     # Platforms are stops whose parent_station points to a station.
-    stops_df = feed.stops[["stop_id", "stop_name", "stop_lat", "stop_lon",
-                            "location_type", "parent_station"]].copy()
+    stops_df = feed.stops[
+        [
+            "stop_id",
+            "stop_name",
+            "stop_lat",
+            "stop_lon",
+            "location_type",
+            "parent_station",
+        ]
+    ].copy()
     stops_df = stops_df.where(pd.notnull(stops_df), None)
 
     # All stations in this feed
     all_stations = stops_df[stops_df["location_type"] == 1].copy()
 
     if all_stations.empty:
-        return jsonify({
-            "error": (
-                "This feed has no stops with location_type=1 (stations). "
-                "The feed may not define parent station relationships. "
-                "Try GET /api/stops?location_type=0 to see available stops."
-            )
-        }), 404
+        return jsonify(
+            {
+                "error": (
+                    "This feed has no stops with location_type=1 (stations). "
+                    "The feed may not define parent station relationships. "
+                    "Try GET /api/stops?location_type=0 to see available stops."
+                )
+            }
+        ), 404
 
     # Validate requested station IDs
     if stop_ids_filter is not None:
@@ -353,22 +373,26 @@ def get_stop_stats():
                 non_station.append(sid)
 
         if unknown:
-            return jsonify({
-                "error": f"The following stop_ids were not found in the feed: {unknown}",
-                "hint": "Use GET /api/stops to discover valid stop IDs.",
-            }), 400
+            return jsonify(
+                {
+                    "error": f"The following stop_ids were not found in the feed: {unknown}",
+                    "hint": "Use GET /api/stops to discover valid stop IDs.",
+                }
+            ), 400
 
         if non_station:
-            return jsonify({
-                "error": (
-                    f"The following stop_ids are not parent stations (location_type=1): "
-                    f"{non_station}. This endpoint only accepts station IDs."
-                ),
-                "hint": (
-                    "Use GET /api/stops?location_type=1 to list valid station IDs. "
-                    "Platform IDs (location_type=0) are automatically resolved internally."
-                ),
-            }), 400
+            return jsonify(
+                {
+                    "error": (
+                        f"The following stop_ids are not parent stations (location_type=1): "
+                        f"{non_station}. This endpoint only accepts station IDs."
+                    ),
+                    "hint": (
+                        "Use GET /api/stops?location_type=1 to list valid station IDs. "
+                        "Platform IDs (location_type=0) are automatically resolved internally."
+                    ),
+                }
+            ), 400
 
         target_stations = all_stations[all_stations["stop_id"].isin(stop_ids_filter)]
     else:
@@ -391,20 +415,20 @@ def get_stop_stats():
 
     # Gather all platform IDs needed for the stats query
     all_platform_ids: list[str] = [
-        pid
-        for pids in station_to_platforms.values()
-        for pid in pids
+        pid for pids in station_to_platforms.values() for pid in pids
     ]
 
     if not all_platform_ids:
-        return jsonify({
-            "error": (
-                "None of the selected stations have linked platform IDs "
-                "(no stops with parent_station pointing to them). "
-                "The feed may not define platform-to-station relationships."
-            ),
-            "hint": "Use GET /api/stops?location_type=0 to inspect platform records.",
-        }), 404
+        return jsonify(
+            {
+                "error": (
+                    "None of the selected stations have linked platform IDs "
+                    "(no stops with parent_station pointing to them). "
+                    "The feed may not define platform-to-station relationships."
+                ),
+                "hint": "Use GET /api/stops?location_type=0 to inspect platform records.",
+            }
+        ), 404
 
     # ── Build route_id lookup per platform (for unique route counting) ─────
     # Join stop_times → trips to get route_id per stop visit
@@ -415,7 +439,9 @@ def get_stop_stats():
 
     route_id_by_platform: dict[str, set[str]] = {}
     for pid, grp in st_routes.groupby("stop_id"):
-        route_id_by_platform[str(pid)] = set(grp["route_id"].dropna().astype(str).unique())
+        route_id_by_platform[str(pid)] = set(
+            grp["route_id"].dropna().astype(str).unique()
+        )
 
     # ── Run compute_stop_stats at platform level ───────────────────────────
     try:
@@ -429,17 +455,22 @@ def get_stop_stats():
     except ValueError as e:
         return jsonify({"error": f"compute_stop_stats failed: {e}"}), 400
     except Exception as e:
-        return jsonify({"error": f"An unexpected error occurred while computing stats: {e}"}), 500
+        return jsonify(
+            {"error": f"An unexpected error occurred while computing stats: {e}"}
+        ), 500
 
     # Sanitise NaN → None
     if not stats_df.empty:
         stats_df = stats_df.where(pd.notnull(stats_df), None)
 
     # ── Aggregate platform stats → station level ───────────────────────────
-    station_meta = (
-        target_stations
-        .set_index("stop_id")[["stop_name", "stop_lat", "stop_lon"]]
-        .where(pd.notnull(target_stations.set_index("stop_id")[["stop_name", "stop_lat", "stop_lon"]]), None)
+    station_meta = target_stations.set_index("stop_id")[
+        ["stop_name", "stop_lat", "stop_lon"]
+    ].where(
+        pd.notnull(
+            target_stations.set_index("stop_id")[["stop_name", "stop_lat", "stop_lon"]]
+        ),
+        None,
     )
 
     result_stations: list[dict] = []
@@ -455,19 +486,23 @@ def get_stop_stats():
             date_records.append(date_agg)
 
         meta = station_meta.loc[sid] if sid in station_meta.index else {}
-        result_stations.append({
-            "station_id":   str(sid),
-            "station_name": station_row.get("stop_name"),
-            "stop_lat":     station_row.get("stop_lat"),
-            "stop_lon":     station_row.get("stop_lon"),
-            "platform_ids": sorted(platform_ids),
-            "dates":        date_records,
-        })
+        result_stations.append(
+            {
+                "station_id": str(sid),
+                "station_name": station_row.get("stop_name"),
+                "stop_lat": station_row.get("stop_lat"),
+                "stop_lon": station_row.get("stop_lon"),
+                "platform_ids": sorted(platform_ids),
+                "dates": date_records,
+            }
+        )
 
-    return jsonify({
-        "mode":       mode,
-        "dates_used": dates_to_use,
-        "warning":    date_warning,
-        "stop_count": len(result_stations),
-        "stations":   result_stations,
-    })
+    return jsonify(
+        {
+            "mode": mode,
+            "dates_used": dates_to_use,
+            "warning": date_warning,
+            "stop_count": len(result_stations),
+            "stations": result_stations,
+        }
+    )

@@ -12,11 +12,14 @@ MODE = "sydney_trains"
 DESTINATION_ID = "200060"  # Central Station
 
 # Modify these to change the data you are requesting
-DATE = "20260525"
+DATE = "20260530"
 TIME_WINDOW_START = "07:00:00"
 TIME_WINDOW_END = "29:59:59"
 
-OUTPUT_CSV = "all_to_central_stats.csv"
+# Generate a safe filename automatically
+_safe_start = TIME_WINDOW_START.replace(":", "")
+_safe_end = TIME_WINDOW_END.replace(":", "")
+OUTPUT_CSV = f"stats_to_destination_{DESTINATION_ID}_date_{DATE}_time_window_{_safe_start}-{_safe_end}.csv"
 # ==========================================
 
 
@@ -66,11 +69,18 @@ def _process_station(args):
         return {
             "origin_id": origin_id,
             "origin_name": origin_name,
-            "num_trips": date_stats["num_trips"],
-            "num_routes": date_stats["num_routes"],
+            "num_trips": date_stats.get("num_trips"),
+            "num_routes": date_stats.get("num_routes"),
+            "min_headway_secs": date_stats.get("min_headway_secs"),
+            "max_headway_secs": date_stats.get("max_headway_secs"),
+            "mean_headway_secs": date_stats.get("mean_headway_secs"),
             "median_headway_secs": date_stats.get("median_headway_secs"),
-            "median_travel_time_secs": date_stats.get("travel_time_median_secs"),
+            "mode_headway_secs": date_stats.get("mode_headway_secs"),
             "min_travel_time_secs": date_stats.get("travel_time_min_secs"),
+            "max_travel_time_secs": date_stats.get("travel_time_max_secs"),
+            "mean_travel_time_secs": date_stats.get("travel_time_mean_secs"),
+            "median_travel_time_secs": date_stats.get("travel_time_median_secs"),
+            "mode_travel_time_secs": date_stats.get("travel_time_mode_secs"),
         }
     return None
 
@@ -85,9 +95,9 @@ def main():
     results = []
 
     # Use ThreadPoolExecutor to run up to 5 requests concurrently.
-    # executor.map guarantees that the results are returned in the exact 
+    # executor.map guarantees that the results are returned in the exact
     # same order as the input args_list, preserving station order!
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+    with concurrent.futures.ThreadPoolExecutor() as executor:
         for res in executor.map(_process_station, args_list):
             if res:
                 results.append(res)

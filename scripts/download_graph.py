@@ -3,7 +3,6 @@ Script to download the OpenStreetMap walking graph for Sydney and save it locall
 This avoids hitting Overpass API rate limits during app runtime.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -28,7 +27,9 @@ def main():
         # Use a bounding box or place name. Place name is easier.
         # We also simplify the graph to reduce size and speed up routing
         G = ox.graph_from_place(place_name, network_type=network_type, simplify=True)
-        print(f"Graph downloaded successfully: {len(G.nodes)} nodes, {len(G.edges)} edges.")
+        print(
+            f"Graph downloaded successfully: {len(G.nodes)} nodes, {len(G.edges)} edges."
+        )
 
         print(f"Saving graph to {output_path}...")
         ox.save_graphml(G, filepath=output_path)

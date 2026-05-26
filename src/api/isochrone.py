@@ -10,7 +10,7 @@ Request body (JSON):
     "lon": 151.2066,
     "speed": 1.4,                 // speed in m/s (default 1.4 for walking)
     "max_duration_minutes": 15,   // maximum travel time in minutes
-    "resolution": "high"          // "high" (concave hull) or "low" (convex hull)
+    "resolution": "high"          // "ultra", "high" (concave hull) or "low" (convex hull)
 }
 
 Response body (JSON):
@@ -66,10 +66,6 @@ def get_graph():
                 penalty_sec = 30
             elif "crossing" in highway:
                 penalty_sec = 10
-            elif _WALK_GRAPH.degree(node) > 4:
-                # A standard 2-way street passing through a node has degree 4 (2 in, 2 out).
-                # Degree > 4 means it's a 3-way or 4-way intersection.
-                penalty_sec = 5
 
             data["penalty_sec"] = penalty_sec
 
@@ -150,6 +146,13 @@ def calculate_isochrone():
         if "x" in node_data and "y" in node_data:
             node_points.append((node_data["x"], node_data["y"]))
 
+    # If resolution is high or ultra, add the edge geometries for a much tighter hull
+    if resolution in ["high", "ultra"]:
+        for u, v, data in G.subgraph(reachable_nodes.keys()).edges(data=True):
+            if "geometry" in data:
+                for coord in data["geometry"].coords:
+                    node_points.append(coord)
+
     if len(node_points) < 3:
         # A polygon needs at least 3 points. Return a simple buffer (circle) in degrees as a fallback
         # 1 degree is roughly 111km, so buffer by (max_duration_sec * speed / 111000)
@@ -161,10 +164,14 @@ def calculate_isochrone():
         import shapely
 
         mp = MultiPoint(node_points)
-        if resolution == "high":
+        if resolution in ["high", "ultra"]:
             # concave_hull creates a tight "shrink-wrap" boundary rather than a rubber band
-            # ratio controls tightness. 0.15 is generally a good balance for street grids
-            poly = shapely.concave_hull(mp, ratio=0.15, allow_holes=False)
+            # Since we inject thousands of edge points, a very low ratio (e.g. 0.05) will trace the roads exactly 
+            # and carve out the city blocks, creating a "splattered" look.
+            # Ratios around 0.3-0.45 are large enough to bridge across city blocks (making a solid blob)
+            # while still contouring tightly around the outer boundaries.
+            ratio = 0.3 if resolution == "ultra" else 0.45
+            poly = shapely.concave_hull(mp, ratio=ratio, allow_holes=False)
 
             # Fallback if concave hull produces invalid geometry due to weird node clusters
             if poly.is_empty or poly.geom_type not in ["Polygon", "MultiPolygon"]:

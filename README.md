@@ -69,8 +69,9 @@ The Stations API starts at [http://localhost:5000](http://localhost:5000). Avail
 | `GET /api/stations?mode=light_rail_parramatta` | List stations for a specific transport mode |
 | `POST /api/stop-stats` | Compute daily service statistics per station |
 | `POST /api/route-stats` | Compute point-to-point service statistics between stations (direct trains) |
+| `POST /api/isochrone` | Compute a walking/biking reachability polygon (requires downloaded OSMnx graph) |
 
-> **Note:** On first request for a mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). Subsequent requests use the in-memory cache and are fast.
+> **Note:** On first request for a transit mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). The Isochrone API requires you to run `uv run python scripts/download_graph.py` first to generate the local street network.
 
 ### 6. Run the legacy route finder web app
 
@@ -98,6 +99,7 @@ nswTransportData/
 │   ├── app.py               # Flask app factory & entry point
 │   ├── config.py            # Paths, env vars, transport mode definitions
 │   ├── api/
+│   │   ├── isochrone.py     # /api/isochrone Blueprint
 │   │   ├── route_stats.py   # /api/route-stats Blueprint
 │   │   ├── stations.py      # /api/stations Blueprint
 │   │   └── stop_stats.py    # /api/stop-stats Blueprint
@@ -110,6 +112,9 @@ nswTransportData/
 │
 ├── common/
 │   └── helpers.py           # Utility functions
+│
+├── scripts/
+│   └── download_graph.py    # Script to download OSMnx walking graphs
 │
 ├── services/
 │   ├── map_service.py       # Folium map generation (routes + stops)
@@ -155,6 +160,7 @@ To enable additional modes, uncomment the relevant sections in `main.py`.
 - **Python 3.14** with **uv** for package management
 - **pandas** + **pyarrow** for high-performance data processing
 - **gtfs-kit** for loading GTFS feeds into DataFrames in the `src/` API
+- **osmnx**, **networkx**, and **shapely** for local street network graph generation and isochrone routing
 - **Folium** for interactive Leaflet.js map generation
 - **Flask** for both the Stations API (`src/`) and the legacy route finder web app
 - **Ruff** for linting and formatting

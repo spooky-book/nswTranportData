@@ -10,6 +10,7 @@ from api.stations import stations_bp
 from api.stops import stops_bp
 from api.stop_stats import stop_stats_bp
 from api.route_stats import route_stats_bp
+from api.isochrone import isochrone_bp
 from config import FLASK_PORT
 
 
@@ -22,6 +23,7 @@ def create_app() -> Flask:
     app.register_blueprint(stops_bp)
     app.register_blueprint(stop_stats_bp)
     app.register_blueprint(route_stats_bp)
+    app.register_blueprint(isochrone_bp)
 
     @app.route("/")
     def index():
@@ -46,6 +48,9 @@ def create_app() -> Flask:
                 # Route statistics endpoint
                 "route_stats": "POST /api/route-stats",
                 "route_stats_docs": "See endpoint docstring for full request/response schema",
+                # Isochrone endpoint
+                "isochrone": "POST /api/isochrone",
+                "isochrone_docs": "See endpoint docstring for full request/response schema",
             },
         }
 

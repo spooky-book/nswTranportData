@@ -47,7 +47,7 @@ def main():
     # map_all_stations.save("./maps/gtfs_shapes_complete.html")
 
 
-def get_schedule_gtfs_shared(api_path: str, file_path: str):
+def get_schedule_gtfs_shared(api_path: str, file_path: str, version: str = "v1") -> GTFSStatic:
     print(f"Retrieving schedule GTFS data for sydney {file_path}")
     api_key = os.getenv("TRANSPORT_NSW_API_KEY")
     if not api_key:
@@ -70,7 +70,7 @@ def get_schedule_gtfs_shared(api_path: str, file_path: str):
     try:
         print("Retrieving schedule GTFS data from api endpoint")
 
-        url = f"https://api.transport.nsw.gov.au/v1/gtfs/schedule/{api_path}"
+        url = f"https://api.transport.nsw.gov.au/{version}/gtfs/schedule/{api_path}"
         with requests.get(
             url,
             headers={"Authorization": f"apikey {api_key}"},
@@ -135,6 +135,10 @@ def get_schedule_gtfs_sydney_trains() -> GTFSStatic:
 
 def get_schedule_gtfs_nsw_trains() -> GTFSStatic:
     return get_schedule_gtfs_shared("nswtrains", "nsw_trains")
+
+
+def get_schedule_gtfs_sydney_metro() -> GTFSStatic:
+    return get_schedule_gtfs_shared("metro", "sydney_metro", version="v2")
 
 
 # def get_schedule_gtfs_buses() -> GTFSStatic:

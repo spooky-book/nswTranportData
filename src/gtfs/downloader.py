@@ -43,6 +43,7 @@ def get_gtfs_zip_path(mode: str) -> Path:
     mode_config = TRANSPORT_MODES[mode]
     api_path = mode_config["api_path"]
     cache_folder = mode_config["cache_folder"]
+    api_version = mode_config.get("version", "v1")
 
     sydney_date = datetime.now(ZoneInfo("Australia/Sydney")).date()
     zip_path = DATA_DIR / str(sydney_date) / cache_folder / "gtfs_schedule.zip"
@@ -61,7 +62,7 @@ def get_gtfs_zip_path(mode: str) -> Path:
 
     print(f"[downloader] Downloading GTFS data for '{mode}' from TfNSW API...")
 
-    url = f"https://api.transport.nsw.gov.au/v1/gtfs/schedule/{api_path}"
+    url = f"https://api.transport.nsw.gov.au/{api_version}/gtfs/schedule/{api_path}"
 
     try:
         with requests.get(

@@ -6,12 +6,14 @@ and caches them in memory for reuse.
 """
 
 import gtfs_kit as gk
+import threading
 
 from config import DEFAULT_MODE
 from gtfs.downloader import get_gtfs_zip_path
 
 # In-memory cache: mode name → Feed object
 _feed_cache: dict[str, gk.Feed] = {}
+_feed_lock = threading.Lock()
 
 
 def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
@@ -31,15 +33,20 @@ def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
     if mode in _feed_cache:
         return _feed_cache[mode]
 
-    zip_path = get_gtfs_zip_path(mode)
-    print(f"[loader] Loading GTFS feed from {zip_path} ...")
+    with _feed_lock:
+        if mode in _feed_cache:
+            return _feed_cache[mode]
 
-    feed = gk.read_feed(str(zip_path), dist_units="km")
-    _normalise_feed(feed)
-    _filter_non_passenger_services(feed)
-    _feed_cache[mode] = feed
-
-    print(f"[loader] Feed loaded: {len(feed.stops)} stops, {len(feed.routes)} routes")
+        zip_path = get_gtfs_zip_path(mode)
+        print(f"[loader] Loading GTFS feed from {zip_path} ...")
+    
+        feed = gk.read_feed(str(zip_path), dist_units="km")
+        _normalise_feed(feed)
+        _filter_non_passenger_services(feed)
+        _feed_cache[mode] = feed
+    
+        print(f"[loader] Feed loaded: {len(feed.stops)} stops, {len(feed.routes)} routes")
+        
     return feed
 
 

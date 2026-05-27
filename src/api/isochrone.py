@@ -30,17 +30,21 @@ import networkx as nx
 import osmnx as ox
 from flask import Blueprint, jsonify, request, render_template
 from shapely.geometry import MultiPoint
+import threading
 
 isochrone_bp = Blueprint("isochrone", __name__, url_prefix="/api")
+
 
 @isochrone_bp.route("/map", methods=["GET"])
 def isochrone_map():
     """Serves the interactive frontend UI for the Isochrone generator."""
     return render_template("isochrone_map.html")
 
+
 # Global cache for the graph
 _WALK_GRAPH = None
 _GRAPH_LOADED = False
+_GRAPH_LOCK = threading.Lock()
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
@@ -50,32 +54,38 @@ GRAPH_PATH = DATA_DIR / "osmnx" / "sydney_walk.graphml"
 def get_graph():
     """Lazily load the graphml file and pre-compute node penalties."""
     global _WALK_GRAPH, _GRAPH_LOADED
-    if not _GRAPH_LOADED:
-        if not GRAPH_PATH.exists():
-            raise FileNotFoundError(
-                f"Graph file not found at {GRAPH_PATH}. "
-                "Please run scripts/download_graph.py first."
-            )
-        print(f"Loading graph from {GRAPH_PATH} (this may take a moment)...")
-        _WALK_GRAPH = ox.load_graphml(GRAPH_PATH)
 
-        print("Pre-computing intersection penalties...")
-        for node, data in _WALK_GRAPH.nodes(data=True):
-            penalty_sec = 0
-            highway = data.get("highway", "")
-            # If highway is a list (can happen in OSMnx if multiple tags), convert to string or check
-            if isinstance(highway, list):
-                highway = ",".join(highway)
+    if _GRAPH_LOADED:
+        return _WALK_GRAPH
 
-            if "traffic_signals" in highway:
-                penalty_sec = 30
-            elif "crossing" in highway:
-                penalty_sec = 10
+    with _GRAPH_LOCK:
+        if not _GRAPH_LOADED:
+            if not GRAPH_PATH.exists():
+                raise FileNotFoundError(
+                    f"Graph file not found at {GRAPH_PATH}. "
+                    "Please run scripts/download_graph.py first."
+                )
+            print(f"Loading graph from {GRAPH_PATH} (this may take a moment)...")
+            _WALK_GRAPH = ox.load_graphml(GRAPH_PATH)
 
-            data["penalty_sec"] = penalty_sec
+            print("Pre-computing intersection penalties...")
+            for node, data in _WALK_GRAPH.nodes(data=True):
+                penalty_sec = 0
+                highway = data.get("highway", "")
+                # If highway is a list (can happen in OSMnx if multiple tags), convert to string or check
+                if isinstance(highway, list):
+                    highway = ",".join(highway)
 
-        _GRAPH_LOADED = True
-        print("Graph loaded successfully.")
+                if "traffic_signals" in highway:
+                    penalty_sec = 30
+                elif "crossing" in highway:
+                    penalty_sec = 10
+
+                data["penalty_sec"] = penalty_sec
+
+            _GRAPH_LOADED = True
+            print("Graph loaded successfully.")
+
     return _WALK_GRAPH
 
 
@@ -171,9 +181,9 @@ def calculate_isochrone():
         mp = MultiPoint(node_points)
         if resolution in ["high", "ultra"]:
             # concave_hull creates a tight "shrink-wrap" boundary rather than a rubber band
-            # Since we inject thousands of edge points, a very low ratio (e.g. 0.05) will trace the roads exactly 
+            # Since we inject thousands of edge points, a very low ratio (e.g. 0.05) will trace the roads exactly
             # and carve out the city blocks, creating a "splattered" look.
-            # Ratios around 0.15-0.35 are now large enough to bridge across city blocks 
+            # Ratios around 0.15-0.35 are now large enough to bridge across city blocks
             # because our new dataset has millions of extra points (driveways, alleys, etc).
             ratio = 0.15 if resolution == "ultra" else 0.35
             poly = shapely.concave_hull(mp, ratio=ratio, allow_holes=False)
@@ -224,12 +234,13 @@ def get_local_network():
 
     # Fast bbox filter
     bbox_nodes = [
-        n for n, d in G.nodes(data=True)
+        n
+        for n, d in G.nodes(data=True)
         if min_x <= d.get("x", 0) <= max_x and min_y <= d.get("y", 0) <= max_y
     ]
-    
+
     local_g = G.subgraph(bbox_nodes)
-    
+
     features = []
     for u, v, data in local_g.edges(data=True):
         if "geometry" in data:
@@ -237,22 +248,18 @@ def get_local_network():
         else:
             coords = [
                 (G.nodes[u]["x"], G.nodes[u]["y"]),
-                (G.nodes[v]["x"], G.nodes[v]["y"])
+                (G.nodes[v]["x"], G.nodes[v]["y"]),
             ]
-            
-        features.append({
-            "type": "Feature",
-            "properties": {
-                "highway": data.get("highway", "unknown"),
-                "length": data.get("length", 0)
-            },
-            "geometry": {
-                "type": "LineString",
-                "coordinates": coords
-            }
-        })
 
-    return jsonify({
-        "type": "FeatureCollection",
-        "features": features
-    })
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "highway": data.get("highway", "unknown"),
+                    "length": data.get("length", 0),
+                },
+                "geometry": {"type": "LineString", "coordinates": coords},
+            }
+        )
+
+    return jsonify({"type": "FeatureCollection", "features": features})

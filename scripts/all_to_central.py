@@ -6,7 +6,7 @@ import concurrent.futures
 # CONFIGURATION
 # ==========================================
 API_BASE_URL = "http://localhost:5000/api"
-MODE = "sydney_trains"
+MODES = ["sydney_trains", "sydney_metro"]
 DESTINATION_ID = "200060"  # Central Station
 
 # Modify these to change the data you are requesting
@@ -22,17 +22,24 @@ OUTPUT_CSV = f"stats_to_destination_{DESTINATION_ID}_date_{DATE}_time_window_{_s
 
 
 def get_all_stations():
-    print(f"Fetching all stations for mode: {MODE}...")
-    url = f"{API_BASE_URL}/stations?mode={MODE}"
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.json().get("stations", [])
+    all_stations = []
+    for mode in MODES:
+        print(f"Fetching all stations for mode: {mode}...")
+        url = f"{API_BASE_URL}/stations?mode={mode}"
+        response = requests.get(url)
+        response.raise_for_status()
+        
+        stations = response.json().get("stations", [])
+        for s in stations:
+            s["mode"] = mode
+        all_stations.extend(stations)
+    return all_stations
 
 
-def get_route_stats(origin_id):
+def get_route_stats(origin_id, mode):
     url = f"{API_BASE_URL}/route-stats"
     payload = {
-        "mode": MODE,
+        "mode": mode,
         "origin_stop_id": origin_id,
         "destination_stop_id": DESTINATION_ID,
         "dates": [DATE],
@@ -49,12 +56,13 @@ def _process_station(args):
     station, index, total = args
     origin_id = station["stop_id"]
     origin_name = station["stop_name"]
+    mode = station["mode"]
 
     if origin_id == DESTINATION_ID:
         return None
 
-    print(f"[{index}/{total}] Fetching stats: {origin_name} -> Central...")
-    stats = get_route_stats(origin_id)
+    print(f"[{index}/{total}] Fetching stats: {origin_name} ({mode}) -> Central...")
+    stats = get_route_stats(origin_id, mode)
 
     if not stats or not stats.get("dates"):
         return None
@@ -67,6 +75,7 @@ def _process_station(args):
         return {
             "origin_id": origin_id,
             "origin_name": origin_name,
+            "mode": mode,
             "num_trips": date_stats.get("num_trips"),
             "num_routes": date_stats.get("num_routes"),
             "min_headway_secs": date_stats.get("min_headway_secs"),

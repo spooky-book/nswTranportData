@@ -50,6 +50,11 @@ TRANSPORT_MODES: dict[str, dict[str, str]] = {
         "api_path": "ferries/MFF",
         "cache_folder": "ferries_mff",
     },
+    "sydney_metro": {
+        "api_path": "metro",
+        "cache_folder": "sydney_metro",
+        "version": "v2",
+    },
 }
 
 DEFAULT_MODE = "sydney_trains"

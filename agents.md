@@ -248,6 +248,13 @@ class LocationTypeEnum(IntEnum):
   - Uses `osmnx` and `networkx` for Dijkstra shortest path length calculation.
   - Applies a custom `travel_time` edge weight incorporating crossing penalties for intersections and traffic lights.
   - Returns a GeoJSON `Polygon` generated via `shapely` concave hull (alpha shape) for high resolution output.
+- **`GET /api/map`** — serves an interactive Leaflet frontend (`src/templates/isochrone_map.html`) to visualize isochrones.
+- **`GET /api/network`** — returns the raw `sydney_walk.graphml` graph edges within a 1.5km bounding box as GeoJSON for UI debugging.
+
+### 3.17 `scripts/download_graph.py` — OSMnx Graph Downloader
+
+- Script to download the local OpenStreetMap walking graph for Sydney.
+- Uses a highly permissive custom Overpass QL filter (`["highway"]["area"!~"yes"]["highway"!~"motorway|trunk..."]`) to explicitly capture footpaths, shared cycleways, and bridges that are normally dropped by OSMnx's default `walk` filter, while correctly avoiding rivers and train tracks.
 
 ---
 

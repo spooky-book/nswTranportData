@@ -6,6 +6,7 @@ A Python application that consumes [GTFS (General Transit Feed Specification)](h
 
 - **Interactive Maps** — Generates [Folium](https://python-visualization.github.io/folium/) maps showing transit routes and stops for trains, light rail, and ferries across NSW.
 - **Route Finder Web App** — A Flask-based web interface for searching stops and computing shortest-path routes using BFS graph traversal.
+- **Isochrone Explorer** — An interactive frontend UI that visually generates high-resolution walking/biking reachability polygons.
 - **Multi-mode Support** — Covers Sydney Trains, NSW Trains, multiple light rail lines, and ferry services.
 - **Smart Caching** — Downloads are date-stamped and cached locally to avoid redundant API calls.
 
@@ -70,8 +71,10 @@ The Stations API starts at [http://localhost:5000](http://localhost:5000). Avail
 | `POST /api/stop-stats` | Compute daily service statistics per station |
 | `POST /api/route-stats` | Compute point-to-point service statistics between stations (direct trains) |
 | `POST /api/isochrone` | Compute a walking/biking reachability polygon (requires downloaded OSMnx graph) |
+| `GET /api/map` | Interactive Leaflet UI for exploring the Isochrone API visually |
+| `GET /api/network` | Debugging endpoint that returns the raw OpenStreetMap walkable graph |
 
-> **Note:** On first request for a transit mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). The Isochrone API requires you to run `uv run python scripts/download_graph.py` first to generate the local street network.
+> **Note:** On first request for a transit mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). The Isochrone API requires you to run `uv run python scripts/download_graph.py` first to generate the massive local street network.
 
 ### 6. Run the legacy route finder web app
 

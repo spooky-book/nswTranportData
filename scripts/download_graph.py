@@ -26,7 +26,7 @@ def main():
     # (except motorways/trunks) AND anything explicitly tagged foot=yes or foot=designated,
     # ensuring we don't miss bridges or cycleways that allow walking.
     custom_filter = (
-        '["area"!~"yes"]["highway"!~"motor|motorway|motorway_link|trunk|trunk_link|proposed|construction|abandoned|platform|raceway"]'
+        '["highway"]["area"!~"yes"]["highway"!~"motor|motorway|motorway_link|trunk|trunk_link|proposed|construction|abandoned|platform|raceway"]'
         '["foot"!~"no"]["access"!~"private"]'
     )
 

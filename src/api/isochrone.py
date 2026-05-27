@@ -28,10 +28,15 @@ from pathlib import Path
 
 import networkx as nx
 import osmnx as ox
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 from shapely.geometry import MultiPoint
 
 isochrone_bp = Blueprint("isochrone", __name__, url_prefix="/api")
+
+@isochrone_bp.route("/map", methods=["GET"])
+def isochrone_map():
+    """Serves the interactive frontend UI for the Isochrone generator."""
+    return render_template("isochrone_map.html")
 
 # Global cache for the graph
 _WALK_GRAPH = None
@@ -168,9 +173,9 @@ def calculate_isochrone():
             # concave_hull creates a tight "shrink-wrap" boundary rather than a rubber band
             # Since we inject thousands of edge points, a very low ratio (e.g. 0.05) will trace the roads exactly 
             # and carve out the city blocks, creating a "splattered" look.
-            # Ratios around 0.3-0.45 are large enough to bridge across city blocks (making a solid blob)
-            # while still contouring tightly around the outer boundaries.
-            ratio = 0.3 if resolution == "ultra" else 0.45
+            # Ratios around 0.15-0.35 are now large enough to bridge across city blocks 
+            # because our new dataset has millions of extra points (driveways, alleys, etc).
+            ratio = 0.15 if resolution == "ultra" else 0.35
             poly = shapely.concave_hull(mp, ratio=ratio, allow_holes=False)
 
             # Fallback if concave hull produces invalid geometry due to weird node clusters
@@ -197,3 +202,57 @@ def calculate_isochrone():
             "isochrone": geojson,
         }
     )
+
+
+@isochrone_bp.route("/network", methods=["GET"])
+def get_local_network():
+    """Returns the walkable street network within a ~1.5km bounding box for debugging."""
+    lat = request.args.get("lat", type=float)
+    lon = request.args.get("lon", type=float)
+
+    if lat is None or lon is None:
+        return jsonify({"error": "Missing lat/lon"}), 400
+
+    G = get_graph()
+    if not G:
+        return jsonify({"error": "Graph not loaded"}), 500
+
+    # 0.015 degrees is roughly 1.5km
+    margin = 0.015
+    min_x, max_x = lon - margin, lon + margin
+    min_y, max_y = lat - margin, lat + margin
+
+    # Fast bbox filter
+    bbox_nodes = [
+        n for n, d in G.nodes(data=True)
+        if min_x <= d.get("x", 0) <= max_x and min_y <= d.get("y", 0) <= max_y
+    ]
+    
+    local_g = G.subgraph(bbox_nodes)
+    
+    features = []
+    for u, v, data in local_g.edges(data=True):
+        if "geometry" in data:
+            coords = list(data["geometry"].coords)
+        else:
+            coords = [
+                (G.nodes[u]["x"], G.nodes[u]["y"]),
+                (G.nodes[v]["x"], G.nodes[v]["y"])
+            ]
+            
+        features.append({
+            "type": "Feature",
+            "properties": {
+                "highway": data.get("highway", "unknown"),
+                "length": data.get("length", 0)
+            },
+            "geometry": {
+                "type": "LineString",
+                "coordinates": coords
+            }
+        })
+
+    return jsonify({
+        "type": "FeatureCollection",
+        "features": features
+    })

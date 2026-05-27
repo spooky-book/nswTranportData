@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Isochrone Map Explorer</title>
+    
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-glass: rgba(255, 255, 255, 0.85);
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            background-color: #f3f4f6;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Control Panel */
+        .control-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            width: 320px;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .header h1 {
+            margin: 0 0 4px 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        input, select {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            background: white;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+        }
+
+        .row {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .row .form-group {
+            flex: 1;
+        }
+
+        button {
+            background-color: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            margin-top: 8px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        button:hover {
+            background-color: var(--primary-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            background-color: #9CA3AF;
+            cursor: not-allowed;
+        }
+
+        .spinner {
+            display: none;
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Error Message */
+        #error-msg {
+            color: #DC2626;
+            font-size: 0.875rem;
+            margin-top: -8px;
+            display: none;
+        }
+
+        /* Map UI Helper */
+        .map-hint {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(31, 41, 55, 0.8);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.875rem;
+            pointer-events: none;
+            backdrop-filter: blur(4px);
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Leaflet Map Container -->
+    <div id="map"></div>
+    <div class="map-hint">📍 Click anywhere on the map to set the origin</div>
+
+    <!-- UI Overlay -->
+    <div class="control-panel">
+        <div class="header">
+            <h1>Isochrone Explorer</h1>
+            <p>Calculate walkable areas</p>
+        </div>
+
+        <div class="row">
+            <div class="form-group">
+                <label>Latitude</label>
+                <input type="number" id="lat" value="-33.817579" step="0.000001">
+            </div>
+            <div class="form-group">
+                <label>Longitude</label>
+                <input type="number" id="lon" value="151.005535" step="0.000001">
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="form-group">
+                <label>Time (mins)</label>
+                <input type="number" id="duration" value="15" min="1" max="60">
+            </div>
+            <div class="form-group">
+                <label>Speed (m/s)</label>
+                <input type="number" id="speed" value="1.4" step="0.1" min="0.5" max="5">
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Resolution</label>
+            <select id="resolution">
+                <option value="ultra">Ultra (Contoured boundaries)</option>
+                <option value="high">High (Standard blob)</option>
+                <option value="low">Low (Convex rubber-band)</option>
+            </select>
+        </div>
+        
+        <div class="form-group" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 4px;">
+            <input type="checkbox" id="show-network" style="width: auto;">
+            <label for="show-network" style="font-weight: normal; margin: 0; cursor: pointer;">Show walkable street network</label>
+        </div>
+
+        <div id="error-msg"></div>
+
+        <button id="btn-generate">
+            <div class="spinner" id="spinner"></div>
+            <span id="btn-text">Generate Isochrone</span>
+        </button>
+    </div>
+
+    <script>
+        // Initialize Map centered on Parramatta with custom zoom position
+        const map = L.map('map', { zoomControl: false }).setView([-33.817579, 151.005535], 14);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+        // Add sleek CartoDB Positron basemap
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+            subdomains: 'abcd',
+            maxZoom: 20
+        }).addTo(map);
+
+        let currentPolygon = null;
+        let networkLayer = null;
+        let originMarker = L.marker([-33.817579, 151.005535]).addTo(map);
+
+        // Fetch and draw local network
+        async function fetchNetwork(lat, lon) {
+            if (networkLayer) map.removeLayer(networkLayer);
+            if (!document.getElementById('show-network').checked) return;
+            
+            try {
+                const res = await fetch(`/api/network?lat=${lat}&lon=${lon}`);
+                const data = await res.json();
+                networkLayer = L.geoJSON(data, {
+                    style: { color: '#9CA3AF', weight: 1.5, opacity: 0.6 }
+                }).addTo(map);
+                networkLayer.bringToBack();
+            } catch (e) {
+                console.error("Failed to load network:", e);
+            }
+        }
+
+        document.getElementById('show-network').addEventListener('change', () => {
+            const lat = parseFloat(document.getElementById('lat').value);
+            const lon = parseFloat(document.getElementById('lon').value);
+            fetchNetwork(lat, lon);
+        });
+
+        // Update inputs on map click
+        map.on('click', function(e) {
+            document.getElementById('lat').value = e.latlng.lat.toFixed(6);
+            document.getElementById('lon').value = e.latlng.lng.toFixed(6);
+            originMarker.setLatLng(e.latlng);
+            fetchNetwork(e.latlng.lat, e.latlng.lng);
+        });
+
+        document.getElementById('btn-generate').addEventListener('click', async () => {
+            const lat = parseFloat(document.getElementById('lat').value);
+            const lon = parseFloat(document.getElementById('lon').value);
+            const duration = parseInt(document.getElementById('duration').value);
+            const speed = parseFloat(document.getElementById('speed').value);
+            const resolution = document.getElementById('resolution').value;
+
+            const btn = document.getElementById('btn-generate');
+            const spinner = document.getElementById('spinner');
+            const btnText = document.getElementById('btn-text');
+            const errorMsg = document.getElementById('error-msg');
+
+            // UI Loading state
+            btn.disabled = true;
+            spinner.style.display = 'block';
+            btnText.innerText = 'Calculating...';
+            errorMsg.style.display = 'none';
+
+            // Ensure marker is at requested position
+            originMarker.setLatLng([lat, lon]);
+
+            try {
+                const response = await fetch('/api/isochrone', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        lat: lat,
+                        lon: lon,
+                        max_duration_minutes: duration,
+                        speed: speed,
+                        resolution: resolution
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'Failed to generate isochrone');
+                }
+
+                // Remove existing polygon
+                if (currentPolygon) {
+                    map.removeLayer(currentPolygon);
+                }
+
+                // Add new polygon to map
+                currentPolygon = L.geoJSON(data.isochrone, {
+                    style: function (feature) {
+                        return {
+                            color: '#4F46E5',
+                            weight: 2,
+                            opacity: 0.8,
+                            fillColor: '#6366F1',
+                            fillOpacity: 0.3
+                        };
+                    }
+                }).addTo(map);
+
+                // Fit map to new polygon
+                map.fitBounds(currentPolygon.getBounds(), { padding: [50, 50] });
+
+            } catch (err) {
+                errorMsg.innerText = err.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                // Restore UI state
+                btn.disabled = false;
+                spinner.style.display = 'none';
+                btnText.innerText = 'Generate Isochrone';
+            }
+        });
+    </script>
+</body>
+</html>

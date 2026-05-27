@@ -8,6 +8,9 @@
     <!-- Leaflet CSS & JS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- Turf.js for Client-side Geometry Operations -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
     <style>
         :root {
@@ -36,13 +39,10 @@
             z-index: 1;
         }
 
-        /* Glassmorphism Control Panel */
-        .control-panel {
+        /* Glassmorphism Panels */
+        .glass-panel {
             position: absolute;
-            top: 20px;
-            left: 20px;
             z-index: 1000;
-            width: 320px;
             background: var(--bg-glass);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
@@ -53,6 +53,19 @@
             display: flex;
             flex-direction: column;
             gap: 16px;
+        }
+
+        .control-panel {
+            top: 20px;
+            left: 20px;
+            width: 320px;
+        }
+
+        .layer-manager {
+            top: 20px;
+            right: 20px;
+            width: 350px;
+            max-height: calc(100vh - 80px);
         }
 
         .header h1 {
@@ -80,7 +93,7 @@
             color: var(--text-main);
         }
 
-        input, select {
+        input[type="number"], select {
             width: 100%;
             box-sizing: border-box;
             padding: 10px 12px;
@@ -92,7 +105,7 @@
             transition: border-color 0.2s, box-shadow 0.2s;
         }
 
-        input:focus, select:focus {
+        input[type="number"]:focus, select:focus {
             border-color: var(--primary);
             box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
         }
@@ -116,7 +129,6 @@
             font-weight: 600;
             cursor: pointer;
             transition: background-color 0.2s, transform 0.1s;
-            margin-top: 8px;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -133,6 +145,18 @@
         button:disabled {
             background-color: #9CA3AF;
             cursor: not-allowed;
+        }
+        
+        button.secondary {
+            background-color: #ffffff;
+            color: var(--text-main);
+            border: 1px solid #D1D5DB;
+            padding: 8px;
+            font-size: 0.875rem;
+        }
+        
+        button.secondary:hover {
+            background-color: #f3f4f6;
         }
 
         .spinner {
@@ -174,6 +198,73 @@
             backdrop-filter: blur(4px);
         }
 
+        /* Layer List Styles */
+        .layer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            overflow-y: auto;
+            max-height: 300px;
+            padding-right: 4px;
+        }
+
+        .layer-item {
+            display: flex;
+            align-items: center;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #E5E7EB;
+            gap: 12px;
+        }
+
+        .layer-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .layer-item .layer-name {
+            flex: 1;
+            font-size: 0.875rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .layer-item input[type="color"] {
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: none;
+        }
+
+        .icon-btn {
+            background: none;
+            border: none;
+            padding: 4px;
+            color: var(--text-muted);
+            cursor: pointer;
+            border-radius: 4px;
+        }
+
+        .icon-btn:hover {
+            background: #F3F4F6;
+            color: var(--text-main);
+        }
+
+        .geom-ops {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding-top: 16px;
+            border-top: 1px solid #E5E7EB;
+        }
+
     </style>
 </head>
 <body>
@@ -182,8 +273,8 @@
     <div id="map"></div>
     <div class="map-hint">📍 Click anywhere on the map to set the origin</div>
 
-    <!-- UI Overlay -->
-    <div class="control-panel">
+    <!-- UI Overlay: Generator -->
+    <div class="glass-panel control-panel">
         <div class="header">
             <h1>Isochrone Explorer</h1>
             <p>Calculate walkable areas</p>
@@ -233,23 +324,390 @@
         </button>
     </div>
 
+    <!-- UI Overlay: Layer Manager -->
+    <div class="glass-panel layer-manager">
+        <div class="header">
+            <h1>Layer Manager</h1>
+            <p>Manage, color, and intersect shapes</p>
+        </div>
+
+        <div class="row">
+            <button class="secondary" id="btn-import" style="flex: 1;">
+                📂 Import GeoJSON
+            </button>
+            <button class="secondary" id="btn-export-all" style="flex: 1;">
+                ⬇️ Export All
+            </button>
+        </div>
+        <input type="file" id="file-import" accept=".geojson,.json" style="display: none;">
+
+        <div class="layer-list" id="layer-list">
+            <!-- Layers injected here dynamically -->
+            <div style="text-align: center; color: #9CA3AF; font-size: 0.875rem; padding: 16px 0;">
+                No layers generated yet.
+            </div>
+        </div>
+
+        <div class="geom-ops">
+            <label>Geometry Operations</label>
+            <p style="margin: 0; font-size: 0.75rem; color: #6B7280; margin-bottom: 4px;">Select exactly two layers to process.</p>
+            <div class="row" style="gap: 8px;">
+                <select id="geom-op" style="flex: 2;">
+                    <option value="intersect">Overlap (Intersect)</option>
+                    <option value="union">Merge (Union)</option>
+                    <option value="difference">Difference (XOR)</option>
+                </select>
+                <button id="btn-execute-op" style="flex: 1; padding: 8px; margin: 0;">Execute</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        // Initialize Map centered on Parramatta with custom zoom position
-        const map = L.map('map', { zoomControl: false }).setView([-33.817579, 151.005535], 14);
+        // --- MAP INITIALIZATION ---
+        const initLat = parseFloat(document.getElementById('lat').value) || -33.817579;
+        const initLon = parseFloat(document.getElementById('lon').value) || 151.005535;
+
+        const map = L.map('map', { zoomControl: false }).setView([initLat, initLon], 14);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-        // Add sleek CartoDB Positron basemap
         L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
             attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
             subdomains: 'abcd',
             maxZoom: 20
         }).addTo(map);
 
-        let currentPolygon = null;
         let networkLayer = null;
-        let originMarker = L.marker([-33.817579, 151.005535]).addTo(map);
+        let originMarker = L.marker([initLat, initLon]).addTo(map);
 
-        // Fetch and draw local network
+        // --- LAYER STATE MANAGEMENT ---
+        let layers = [];
+        let layerIdCounter = 1;
+        const defaultColors = ['#4F46E5', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
+
+        function getNextColor() {
+            return defaultColors[(layerIdCounter - 1) % defaultColors.length];
+        }
+
+        function createLeafletStyle(color) {
+            return {
+                color: color,
+                weight: 2,
+                opacity: 0.8,
+                fillColor: color,
+                fillOpacity: 0.3
+            };
+        }
+
+        function addLayer(geojson, name, color = null) {
+            const layerColor = color || getNextColor();
+            
+            const lLayer = L.geoJSON(geojson, {
+                style: () => createLeafletStyle(layerColor)
+            }).addTo(map);
+
+            const newLayer = {
+                id: `layer-${layerIdCounter++}`,
+                name: name,
+                geojson: geojson,
+                leafletLayer: lLayer,
+                color: layerColor,
+                selected: false,
+                visible: true
+            };
+
+            layers.push(newLayer);
+            renderLayerList();
+            
+            // Auto-fit bounds on new layer
+            map.fitBounds(lLayer.getBounds(), { padding: [50, 50] });
+        }
+
+        function removeLayer(id) {
+            const index = layers.findIndex(l => l.id === id);
+            if (index > -1) {
+                map.removeLayer(layers[index].leafletLayer);
+                layers.splice(index, 1);
+                renderLayerList();
+            }
+        }
+
+        function updateLayerColor(id, newColor) {
+            const layer = layers.find(l => l.id === id);
+            if (layer) {
+                layer.color = newColor;
+                layer.leafletLayer.setStyle(createLeafletStyle(newColor));
+            }
+        }
+
+        function toggleLayerSelection(id, checked) {
+            const layer = layers.find(l => l.id === id);
+            if (layer) layer.selected = checked;
+        }
+
+        function toggleLayerVisibility(id) {
+            const layer = layers.find(l => l.id === id);
+            if (layer) {
+                layer.visible = !layer.visible;
+                if (layer.visible) {
+                    map.addLayer(layer.leafletLayer);
+                } else {
+                    map.removeLayer(layer.leafletLayer);
+                }
+                renderLayerList();
+            }
+        }
+
+        async function exportLayer(id) {
+            const layer = layers.find(l => l.id === id);
+            if (!layer) return;
+
+            // Get lat/lon from the layer's center bounding box
+            let lat = document.getElementById('lat').value;
+            let lon = document.getElementById('lon').value;
+            if (layer.leafletLayer) {
+                const center = layer.leafletLayer.getBounds().getCenter();
+                lat = center.lat.toFixed(6);
+                lon = center.lng.toFixed(6);
+            }
+
+            const defaultName = `${layer.name.replace(/\s+/g, '_')}_lat${lat}_lon${lon}.geojson`;
+            const content = JSON.stringify(layer.geojson, null, 2);
+
+            try {
+                // Modern browsers: Show native "Save As" dialog
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: defaultName,
+                        types: [{
+                            description: 'GeoJSON File',
+                            accept: {'application/geo+json': ['.geojson', '.json']},
+                        }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(content);
+                    await writable.close();
+                } else {
+                    // Fallback for older browsers
+                    const userInput = prompt("Save file as:", defaultName);
+                    if (!userInput) return; // User cancelled
+                    
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(content);
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", dataStr);
+                    downloadAnchorNode.setAttribute("download", userInput);
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                }
+            } catch (err) {
+                // Ignore AbortError (user clicked cancel)
+                if (err.name !== 'AbortError') {
+                    console.error("Export failed:", err);
+                    alert("Export failed: " + err.message);
+                }
+            }
+        }
+
+        function renderLayerList() {
+            const container = document.getElementById('layer-list');
+            container.innerHTML = '';
+
+            if (layers.length === 0) {
+                container.innerHTML = '<div style="text-align: center; color: #9CA3AF; font-size: 0.875rem; padding: 16px 0;">No layers generated yet.</div>';
+                return;
+            }
+
+            layers.forEach(layer => {
+                const item = document.createElement('div');
+                item.className = 'layer-item';
+
+                // Checkbox
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = layer.selected;
+                cb.title = "Select for geometry operation";
+                cb.onchange = (e) => toggleLayerSelection(layer.id, e.target.checked);
+                
+                // Name
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'layer-name';
+                nameSpan.innerText = layer.name;
+                nameSpan.title = layer.name;
+
+                // Color picker
+                const colorInput = document.createElement('input');
+                colorInput.type = 'color';
+                colorInput.value = layer.color;
+                colorInput.oninput = (e) => updateLayerColor(layer.id, e.target.value);
+                
+                // Visibility button
+                const visBtn = document.createElement('button');
+                visBtn.className = 'icon-btn';
+                visBtn.innerHTML = '👁️';
+                visBtn.style.opacity = layer.visible ? '1' : '0.4';
+                visBtn.title = layer.visible ? "Hide Layer" : "Show Layer";
+                visBtn.onclick = () => toggleLayerVisibility(layer.id);
+
+                // Export button
+                const exportBtn = document.createElement('button');
+                exportBtn.className = 'icon-btn';
+                exportBtn.innerHTML = '⬇️';
+                exportBtn.title = "Export GeoJSON";
+                exportBtn.onclick = () => exportLayer(layer.id);
+
+                // Delete button
+                const deleteBtn = document.createElement('button');
+                deleteBtn.className = 'icon-btn';
+                deleteBtn.innerHTML = '🗑️';
+                deleteBtn.title = "Delete Layer";
+                deleteBtn.onclick = () => removeLayer(layer.id);
+
+                item.appendChild(cb);
+                item.appendChild(nameSpan);
+                item.appendChild(colorInput);
+                item.appendChild(visBtn);
+                item.appendChild(exportBtn);
+                item.appendChild(deleteBtn);
+
+                container.appendChild(item);
+            });
+        }
+
+        // --- IMPORT LOGIC ---
+        document.getElementById('btn-import').addEventListener('click', () => {
+            document.getElementById('file-import').click();
+        });
+
+        document.getElementById('file-import').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const geojson = JSON.parse(event.target.result);
+                    if (geojson.type === 'FeatureCollection' && geojson.features && geojson.features.length > 0) {
+                        geojson.features.forEach((feature, index) => {
+                            const name = feature.properties?.name || `${file.name.replace('.geojson', '').replace('.json', '')} - Part ${index + 1}`;
+                            const color = feature.properties?.color || null;
+                            addLayer(feature, name, color);
+                        });
+                    } else {
+                        addLayer(geojson, file.name.replace('.geojson', '').replace('.json', ''));
+                    }
+                } catch (err) {
+                    alert("Invalid GeoJSON file!");
+                }
+            };
+            reader.readAsText(file);
+            e.target.value = ''; // Reset input
+        });
+
+        document.getElementById('btn-export-all').addEventListener('click', async () => {
+            if (layers.length === 0) {
+                alert("No layers to export!");
+                return;
+            }
+
+            const features = layers.flatMap(layer => {
+                let gj = JSON.parse(JSON.stringify(layer.geojson));
+                if (gj.type === 'FeatureCollection') {
+                    return gj.features.map(f => {
+                        if (!f.properties) f.properties = {};
+                        f.properties.name = layer.name;
+                        f.properties.color = layer.color;
+                        return f;
+                    });
+                } else {
+                    let feature = gj.type === 'Feature' ? gj : { type: 'Feature', geometry: gj, properties: {} };
+                    if (!feature.properties) feature.properties = {};
+                    feature.properties.name = layer.name;
+                    feature.properties.color = layer.color;
+                    return [feature];
+                }
+            });
+
+            const featureCollection = { type: "FeatureCollection", features: features };
+            const content = JSON.stringify(featureCollection, null, 2);
+            const defaultName = `Isochrone_Collection_${layers.length}_layers.geojson`;
+
+            try {
+                if (window.showSaveFilePicker) {
+                    const handle = await window.showSaveFilePicker({
+                        suggestedName: defaultName,
+                        types: [{ description: 'GeoJSON File', accept: {'application/geo+json': ['.geojson', '.json']} }],
+                    });
+                    const writable = await handle.createWritable();
+                    await writable.write(content);
+                    await writable.close();
+                } else {
+                    const userInput = prompt("Save file as:", defaultName);
+                    if (!userInput) return;
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(content);
+                    const downloadAnchorNode = document.createElement('a');
+                    downloadAnchorNode.setAttribute("href", dataStr);
+                    downloadAnchorNode.setAttribute("download", userInput);
+                    document.body.appendChild(downloadAnchorNode);
+                    downloadAnchorNode.click();
+                    downloadAnchorNode.remove();
+                }
+            } catch (err) {
+                if (err.name !== 'AbortError') {
+                    console.error("Export failed:", err);
+                    alert("Export failed: " + err.message);
+                }
+            }
+        });
+
+        // --- GEOMETRY OPERATIONS (TURF.JS) ---
+        document.getElementById('btn-execute-op').addEventListener('click', () => {
+            const selectedLayers = layers.filter(l => l.selected);
+            if (selectedLayers.length !== 2) {
+                alert("Please select EXACTLY TWO layers using the checkboxes to perform a geometry operation.");
+                return;
+            }
+
+            const op = document.getElementById('geom-op').value;
+            const poly1 = selectedLayers[0].geojson;
+            const poly2 = selectedLayers[1].geojson;
+            let resultGeom = null;
+
+            try {
+                if (op === 'intersect') {
+                    resultGeom = turf.intersect(poly1, poly2);
+                } else if (op === 'union') {
+                    resultGeom = turf.union(poly1, poly2);
+                } else if (op === 'difference') {
+                    // True XOR (Symmetric Difference): (A U B) - (A ∩ B)
+                    const unionGeom = turf.union(poly1, poly2);
+                    const intersectGeom = turf.intersect(poly1, poly2);
+                    
+                    if (intersectGeom) {
+                        resultGeom = turf.difference(unionGeom, intersectGeom);
+                    } else {
+                        resultGeom = unionGeom; // If they don't overlap, XOR is just the union
+                    }
+                }
+
+                if (!resultGeom) {
+                    alert("The operation resulted in an empty geometry (e.g. no overlap).");
+                    return;
+                }
+
+                const newName = `${op.charAt(0).toUpperCase() + op.slice(1)} Result`;
+                
+                // Deselect the parents
+                selectedLayers.forEach(l => {
+                    l.selected = false;
+                });
+
+                addLayer(resultGeom, newName);
+            } catch (err) {
+                alert("Geometry operation failed. Ensure the shapes are valid intersecting polygons. Error: " + err.message);
+            }
+        });
+
+        // --- NETWORK & API LOGIC ---
         async function fetchNetwork(lat, lon) {
             if (networkLayer) map.removeLayer(networkLayer);
             if (!document.getElementById('show-network').checked) return;
@@ -272,7 +730,6 @@
             fetchNetwork(lat, lon);
         });
 
-        // Update inputs on map click
         map.on('click', function(e) {
             document.getElementById('lat').value = e.latlng.lat.toFixed(6);
             document.getElementById('lon').value = e.latlng.lng.toFixed(6);
@@ -292,13 +749,11 @@
             const btnText = document.getElementById('btn-text');
             const errorMsg = document.getElementById('error-msg');
 
-            // UI Loading state
             btn.disabled = true;
             spinner.style.display = 'block';
             btnText.innerText = 'Calculating...';
             errorMsg.style.display = 'none';
 
-            // Ensure marker is at requested position
             originMarker.setLatLng([lat, lon]);
 
             try {
@@ -320,32 +775,14 @@
                     throw new Error(data.error || 'Failed to generate isochrone');
                 }
 
-                // Remove existing polygon
-                if (currentPolygon) {
-                    map.removeLayer(currentPolygon);
-                }
-
-                // Add new polygon to map
-                currentPolygon = L.geoJSON(data.isochrone, {
-                    style: function (feature) {
-                        return {
-                            color: '#4F46E5',
-                            weight: 2,
-                            opacity: 0.8,
-                            fillColor: '#6366F1',
-                            fillOpacity: 0.3
-                        };
-                    }
-                }).addTo(map);
-
-                // Fit map to new polygon
-                map.fitBounds(currentPolygon.getBounds(), { padding: [50, 50] });
+                // Add as a new managed layer
+                const layerName = `Isochrone (${duration}m, ${speed}m/s)`;
+                addLayer(data.isochrone, layerName);
 
             } catch (err) {
                 errorMsg.innerText = err.message;
                 errorMsg.style.display = 'block';
             } finally {
-                // Restore UI state
                 btn.disabled = false;
                 spinner.style.display = 'none';
                 btnText.innerText = 'Generate Isochrone';

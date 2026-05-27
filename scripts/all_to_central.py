@@ -1,7 +1,5 @@
 import requests
-import json
 import csv
-from datetime import datetime
 import concurrent.futures
 
 # ==========================================
@@ -12,9 +10,9 @@ MODE = "sydney_trains"
 DESTINATION_ID = "200060"  # Central Station
 
 # Modify these to change the data you are requesting
-DATE = "20260530"
+DATE = "20260525"
 TIME_WINDOW_START = "07:00:00"
-TIME_WINDOW_END = "29:59:59"
+TIME_WINDOW_END = "23:00:00"
 
 # Generate a safe filename automatically
 _safe_start = TIME_WINDOW_START.replace(":", "")

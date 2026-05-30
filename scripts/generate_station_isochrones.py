@@ -116,18 +116,6 @@ def process_station(item, coords):
 
     features = []
 
-    # Create the Point feature for the station
-    features.append(
-        {
-            "type": "Feature",
-            "properties": {
-                "name": f"📍 {name} ({'Metro' if 'metro' in mode else 'Trains'})",
-                "color": "#000000",
-            },
-            "geometry": {"type": "Point", "coordinates": [lon, lat]},
-        }
-    )
-
     if response.status_code == 200:
         data = response.json()
         if "isochrone" in data:
@@ -137,9 +125,8 @@ def process_station(item, coords):
                     "type": "Feature",
                     "properties": {
                         "name": f"Isochrone - {name}",
-                        "color": "#EC4899"
-                        if "metro" in mode
-                        else "#4F46E5",  # Pink for metro, Blue for trains
+                        "color": "#EC4899" if "metro" in mode else "#4F46E5",
+                        "center_point": [lon, lat],
                     },
                     "geometry": data["isochrone"],
                 }

@@ -168,7 +168,9 @@ def calculate_isochrone():
                 for coord in data["geometry"].coords:
                     node_points.append(coord)
 
+    used_fallback = False
     if len(node_points) < 3:
+        used_fallback = True
         # A polygon needs at least 3 points. Return a simple buffer (circle) in degrees as a fallback
         # 1 degree is roughly 111km, so buffer by (max_duration_sec * speed / 111000)
         fallback_buffer = (max_duration_sec * speed) / 111000
@@ -209,6 +211,8 @@ def calculate_isochrone():
             "speed": speed,
             "max_duration_minutes": max_duration_minutes,
             "resolution": resolution,
+            "reachable_nodes": len(reachable_nodes),
+            "fallback_circle": used_fallback,
             "isochrone": geojson,
         }
     )

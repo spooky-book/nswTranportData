@@ -16,16 +16,17 @@ import pandas as pd
 from flask import Blueprint, jsonify, request
 
 from gtfs.loader import get_feed
+from constants import LocationTypeEnum
 
 stops_bp = Blueprint("stops", __name__, url_prefix="/api")
 
 # Human-readable labels for each GTFS location_type value, used in responses
 _LOCATION_TYPE_LABELS = {
-    0: "platform",
-    1: "station",
-    2: "entrance_exit",
-    3: "generic_node",
-    4: "boarding_area",
+    LocationTypeEnum.PLATFORMSTOP.value: "platform",
+    LocationTypeEnum.STATION.value: "station",
+    LocationTypeEnum.ENTRANCE.value: "entrance_exit",
+    LocationTypeEnum.GENERIC_NODE.value: "generic_node",
+    LocationTypeEnum.BOARDING_AREA.value: "boarding_area",
 }
 
 

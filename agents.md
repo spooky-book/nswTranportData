@@ -11,10 +11,7 @@ This is a **Python application** that consumes **GTFS (General Transit Feed Spec
 from the [Transport for NSW (TfNSW) Open Data API](https://opendata.transport.nsw.gov.au/) and uses
 it to:
 
-1. **Generate interactive Folium maps** showing transit routes (shapes) and stops for various NSW
-   transport modes (trains, light rail, ferries).
-2. **Serve a Flask web app** that lets users search for stops and compute shortest-path routes
-   between them using a BFS graph traversal.
+1. **Serve a Flask web API and UI** that provides access to GTFS transit data, shortest-path train routes, and generates isochrone reachability maps.
 
 The project targets **Sydney / NSW public transport** exclusively.
 
@@ -24,13 +21,7 @@ The project targets **Sydney / NSW public transport** exclusively.
 
 ```
 nswTransportData/
-├── main.py                       # CLI entry point — downloads GTFS data & generates maps
-├── constants.py                  # Shared enums (LocationTypeEnum)
-├── pyproject.toml                # Project metadata & dependencies (managed by uv)
-├── uv.lock                       # uv lockfile — pinned dependency versions
-├── .python-version               # Python version pin (3.14)
-│
-├── src/                          # New Flask API package (import root = src/)
+├── src/                          # Flask API package (import root = src/)
 │   ├── __init__.py
 │   ├── app.py                    # Flask application factory & entry point
 │   ├── config.py                 # Paths, env vars, transport mode definitions
@@ -45,21 +36,6 @@ nswTransportData/
 │       ├── downloader.py         # Downloads & caches GTFS zips from TfNSW API
 │       └── loader.py             # Loads GTFS zip into a gtfs_kit.Feed (with in-memory cache)
 │
-├── loader/
-│   └── loader.py                 # GTFSStatic dataclass — parses GTFS zip into pandas DataFrames
-│
-├── common/
-│   └── helpers.py                # Utility functions (hex colour padding)
-│
-├── services/
-│   ├── map_service.py            # Folium map generation (routes + stops)
-│   └── routing_service.py        # StopGraph (adjacency graph + BFS shortest path)
-│
-├── web/
-│   ├── app.py                    # Legacy Flask app (route finder UI + API)
-│   └── templates/
-│       └── index.html            # Jinja2 template — route finder single-page UI
-│
 ├── data/                         # Downloaded & cached GTFS data (git-ignored)
 │   ├── osmnx/                    # Cached OSMnx walking graphs
 │   │   └── sydney_walk.graphml
@@ -73,10 +49,9 @@ nswTransportData/
 │   └── gtfs_schedule_sydneytrains/  # Pre-extracted Sydney Trains GTFS text files
 │
 ├── scripts/                      # Standalone data acquisition scripts
-│   └── download_graph.py         # Downloads OSMnx walking graph for Sydney
-│
-├── maps/                         # Generated HTML map outputs
-│   └── gtfs_shapes_sydneyTrains.html
+│   ├── download_graph.py         # Downloads OSMnx walking graph for Sydney
+│   ├── generate_supermarket_isochrones.py
+│   └── generate_station_isochrones.py
 │
 ├── .venv/                        # Python virtual environment (managed by uv)
 ├── .idea/                        # PyCharm / JetBrains project config
@@ -86,106 +61,6 @@ nswTransportData/
 ---
 
 ## 3. Key Modules
-
-### 3.1 `main.py` — Entry Point
-
-- Orchestrates GTFS data retrieval for multiple transport modes.
-- Each `get_schedule_gtfs_*()` function:
-  - Checks for a **date-stamped local cache** under `data/schedule-gtfs/<date>/<mode>/`.
-  - If missing, calls the TfNSW API with an `Authorization: apikey <key>` header.
-  - Downloads with `tqdm` progress bar, saves zip, and parses via `GTFSStatic.from_bytes()`.
-- After loading, calls `generate_map_all_routes()` and `add_train_stops_to_map()` to produce a
-  Folium HTML map, saved to `maps/`.
-- Requires the **`TRANSPORT_NSW_API_KEY`** environment variable.
-
-**Currently active transport modes** (uncommented in `main()`):
-- Parramatta Light Rail
-- Inner West Light Rail
-
-**Available but commented out:**
-- Newcastle Light Rail, Sydney Trains, CBD & South East Light Rail, Sydney Ferries, MFF Ferries,
-  NSW Trains, Complete GTFS bundle.
-
-### 3.2 `loader/loader.py` — GTFS Parser
-
-- **`GTFSStatic`** dataclass with a `tables: Dict[str, pd.DataFrame]` field.
-- **`from_bytes(content, tables=None)`**: Parses a GTFS zip from raw bytes.
-  - Default tables: `agency`, `stops`, `routes`, `trips`, `stop_times`, `calendar`,
-    `calendar_dates`, `shapes`, `fare_attributes`, `fare_rules`.
-  - Special handling for `shapes.txt`: uses specific dtypes (`float32`, `int32`, `string[pyarrow]`),
-    categorical `shape_id`, and pyarrow CSV engine for performance.
-  - Other tables: read as strings with `low_memory=False`.
-- **`_normalise_table()`**: Post-processing per table:
-  - `stops`: converts lat/lon to numeric, creates `location_type_enum` column mapped to
-    `LocationTypeEnum`.
-  - `stop_times`: converts `stop_sequence` to numeric.
-- **Query helpers**: `search_stops()`, `routes_by_agency()`, `trips_for_route()`,
-  `stop_times_for_trip()`.
-- **`download_ttfnsw_gtfs()`**: Standalone downloader (uses a different env var `TFNSW_API_KEY`).
-
-### 3.3 `constants.py`
-
-```python
-class LocationTypeEnum(IntEnum):
-    PLATFORMSTOP = 0
-    STATION = 1
-    ENTRANCE = 2
-    GENERIC_NODE = 3
-    BOARDING_AREA = 4
-```
-
-### 3.4 `common/helpers.py`
-
-- **`pad_hex(color, default)`**: Normalises hex colour strings to `#RRGGBB` format. Handles `None`,
-  3-digit shorthand, and short strings.
-
-### 3.5 `services/map_service.py` — Map Generation
-
-- **`generate_map_all_routes(gtfs, ...)`**:
-  - Builds a Folium map with one `FeatureGroup` layer per route.
-  - Converts shapes to GeoJSON `MultiLineString` features (lon/lat ordering).
-  - Supports **parallel processing** via `ProcessPoolExecutor` with a worker-initializer pattern.
-  - Optional path decimation for performance.
-  - Accepts an existing `folium.Map` (`m` parameter) to overlay multiple GTFS datasets.
-- **`add_train_stops_to_map(gtfs, ...)`**:
-  - Adds `CircleMarker`s for stops, coloured by type (blue = station, green = other).
-  - Optional platform display toggle.
-- **`generate_map_by_route()`**: Stub — not yet implemented.
-- Internal helpers: `_paths_by_shape()`, `_route_index()`, `_route_to_shapes()`,
-  `_swap_latlon_to_lonlat()`, `_make_route_feature()`, `decimate_path()`.
-
-### 3.6 `services/routing_service.py` — Graph & Routing
-
-- **`StopGraph`** dataclass:
-  - `adjacency: Dict[str, set]` — undirected graph of stop connections (built from `stop_times`
-    ordered by trip).
-  - `stop_lookup: Dict[str, Dict]` — stop metadata (name, parent station, lat/lon).
-  - **`from_gtfs(cls, gtfs)`**: Constructs graph from GTFS data.
-  - **`shortest_path(origin, destination)`**: BFS shortest path returning list of stop IDs.
-  - **`stop_details(stop_id)`**: Returns metadata for a stop.
-  - **`popular_stops(limit)`**: Alphabetically sorted stops for UI auto-fill.
-- **`stops_for_display(df)`**: Converts a stops DataFrame to a list of display-friendly dicts.
-
-### 3.7 `web/app.py` — Legacy Flask Web App
-
-- Single Flask app with three endpoints:
-  - **`GET /`**: Renders `index.html` with pre-loaded popular stops.
-  - **`GET /api/stops?query=...`**: Returns matching stops as JSON (search or popular default).
-  - **`POST /api/route`**: Accepts `{origin_stop_id, destination_stop_id}`, returns the
-    shortest-path route as a JSON list of stops.
-- Lazily loads GTFS from a zip file (defaults to
-  `data/gtfs_schedule_sydneytrains.zip`, overridable via `GTFS_STATIC_ZIP` env var).
-- ⚠️ **Known issue**: `_load_gtfs_once()` calls `GTFSStatic.from_zip()` which does **not exist**
-  on the `GTFSStatic` class (only `from_bytes()` exists). This will fail at runtime.
-
-### 3.8 `web/templates/index.html` — Route Finder UI
-
-- Single-page app with:
-  - Two autocomplete inputs (origin / destination) backed by `<datalist>` elements.
-  - Live search via `/api/stops` endpoint.
-  - Route computation via `/api/route` endpoint.
-  - Inline CSS with clean, minimal styling.
-  - Jinja2 template variable: `popular_stops` (pre-populated datalist).
 
 ### 3.9 `src/app.py` — New Flask Application Factory
 
@@ -261,19 +136,13 @@ class LocationTypeEnum(IntEnum):
 ## 4. Data Flow
 
 ```
-TfNSW API  ──(HTTPS + API key)──►  main.py  ──(zip bytes)──►  GTFSStatic.from_bytes()
-                                      │                              │
-                                      ▼                              ▼
-                              data/schedule-gtfs/        Dict[str, pd.DataFrame]
-                              (date-stamped cache)              │
-                                                                ├──► map_service.py ──► Folium HTML map
-                                                                └──► routing_service.py ──► StopGraph
-                                                                                               │
-                                                                                               ▼
-                                                                                         web/app.py (Flask)
-                                                                                               │
-                                                                                               ▼
-                                                                                         Browser UI
+TfNSW API  ──(HTTPS + API key)──►  src/gtfs/downloader.py  ──(zip file)──►  src/gtfs/loader.py (gtfs_kit)
+                                      │                                            │
+                                      ▼                                            ▼
+                              data/schedule-gtfs/                               src/app.py (Flask)
+                              (date-stamped cache)                                 │
+                                                                                   ▼
+                                                                             Browser UI & APIs
 ```
 
 ---
@@ -300,13 +169,8 @@ uv add <package>
 # Remove a dependency
 uv remove <package>
 
-# Run a script within the managed environment
-uv run python main.py
-
-# Or activate the venv and run directly
-# Windows:  .venv\Scripts\activate
-# Unix:     source .venv/bin/activate
-python main.py
+# Run the Flask app
+uv run python src/app.py
 ```
 
 ### Dependencies
@@ -339,10 +203,8 @@ python main.py
 
 | Variable                 | Required By              | Description                        |
 |--------------------------|--------------------------|-------------------------------------|
-| `TRANSPORT_NSW_API_KEY`  | `main.py`, `src/`        | TfNSW API key for GTFS downloads   |
-| `TFNSW_API_KEY`          | `loader/loader.py`       | Alternative API key (standalone downloader fn)  |
-| `GTFS_STATIC_ZIP`        | `web/app.py` (legacy)    | Override path to GTFS zip for legacy web app   |
-| `PORT`                   | `src/app.py`, `web/app.py` | Flask server port (default: 5000)  |
+| `TRANSPORT_NSW_API_KEY`  | `src/`                   | TfNSW API key for GTFS downloads   |
+| `PORT`                   | `src/app.py`             | Flask server port (default: 5000)  |
 
 ---
 
@@ -381,15 +243,7 @@ The project works with standard GTFS tables:
 
 ## 9. Known Issues & TODOs
 
-1. **`GTFSStatic.from_zip()` does not exist** — `web/app.py` (legacy) line 49 calls `GTFSStatic.from_zip()`
-   but only `from_bytes()` is defined. The legacy web app will crash on startup.
-2. **`generate_map_by_route()`** is a stub (returns `None`).
-3. **Inconsistent API key env vars** — `main.py` uses `TRANSPORT_NSW_API_KEY`, `loader/loader.py` uses
-   `TFNSW_API_KEY`.
-4. **Shape ID type mismatch** — Comment in `_pack_make_feature()` notes that shape IDs are strings
-   vs numbers, causing issues between trains and light rail.
-5. **Commented-out code** — `map_service.py` contains ~40 lines of old commented-out implementation.
-6. **Mixed indentation** — `routing_service.py` uses spaces; other files use tabs.
+None currently.
 
 ---
 
@@ -406,21 +260,7 @@ The project works with standard GTFS tables:
 uv sync
 ```
 
-### Map Generation (CLI)
-
-```bash
-# Set your API key
-# Windows (PowerShell):
-$env:TRANSPORT_NSW_API_KEY = "your-api-key"
-# Unix/macOS:
-export TRANSPORT_NSW_API_KEY="your-api-key"
-
-# Run the map generator
-uv run python main.py
-# Outputs: maps/gtfs_shapes_sydneyTrains.html
-```
-
-### New Stations API (Flask — `src/`)
+### API Server (Flask — `src/`)
 
 ```bash
 # Windows (PowerShell):
@@ -431,29 +271,12 @@ export TRANSPORT_NSW_API_KEY="your-api-key"
 uv run python src/app.py
 # Runs on http://localhost:5000
 # API index: GET /
+# Map UI: GET /api/map
 # List stations: GET /api/stations
-# Search stations: GET /api/stations?search=central
-# Filter by mode: GET /api/stations?mode=sydney_trains
 ```
 
 > **Import convention for `src/`**: All modules inside `src/` use paths relative to `src/` as the
-> import root (e.g. `from gtfs.loader import get_feed`, NOT `from src.gtfs.loader import get_feed`).
-> Always run the app from the **project root** so Python adds `src/` to `sys.path` correctly.
-
-### Legacy Route Finder (Flask — `web/`)
-
-```bash
-# Optionally set a GTFS zip path
-# Windows (PowerShell):
-$env:GTFS_STATIC_ZIP = "path/to/gtfs.zip"
-# Unix/macOS:
-export GTFS_STATIC_ZIP="path/to/gtfs.zip"
-
-uv run python web/app.py
-# Runs on http://localhost:5000
-```
-
-> ⚠️ The legacy `web/app.py` currently crashes on startup due to a missing `GTFSStatic.from_zip()` method.
+> import root (e.g. `from gtfs.loader import get_feed`). Always run the app from the **project root** so Python adds `src/` to `sys.path` correctly.
 
 ---
 

@@ -8,6 +8,7 @@ import pandas as pd
 from flask import Blueprint, jsonify, request
 
 from gtfs.loader import get_feed
+from constants import LocationTypeEnum
 
 stations_bp = Blueprint("stations", __name__, url_prefix="/api")
 
@@ -46,11 +47,11 @@ def get_stations():
     # Note: after _normalise_feed(), pd.NA is already replaced with None,
     # so we only need to handle None and plain numeric values here.
     if "location_type" in stops_df.columns:
-        stations_df = stops_df[stops_df["location_type"] == 1]
+        stations_df = stops_df[stops_df["location_type"] == LocationTypeEnum.STATION.value]
         if stations_df.empty:
             # No explicit stations — fall back to stops (location_type 0 or missing)
             stations_df = stops_df[
-                stops_df["location_type"].isna() | (stops_df["location_type"] == 0)
+                stops_df["location_type"].isna() | (stops_df["location_type"] == LocationTypeEnum.PLATFORMSTOP.value)
             ]
     else:
         stations_df = stops_df

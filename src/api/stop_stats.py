@@ -23,6 +23,7 @@ import pandas as pd
 from flask import Blueprint, jsonify, request
 
 from gtfs.loader import get_feed
+from constants import LocationTypeEnum
 
 stop_stats_bp = Blueprint("stop_stats", __name__, url_prefix="/api")
 
@@ -346,7 +347,7 @@ def get_stop_stats():
     stops_df = stops_df.where(pd.notnull(stops_df), None)
 
     # All stations in this feed
-    all_stations = stops_df[stops_df["location_type"] == 1].copy()
+    all_stations = stops_df[stops_df["location_type"] == LocationTypeEnum.STATION.value].copy()
 
     if all_stations.empty:
         return jsonify(
@@ -401,7 +402,7 @@ def get_stop_stats():
     # Build station_id → list of platform_ids mapping
     platforms_df = stops_df[
         stops_df["parent_station"].isin(target_stations["stop_id"])
-        & (stops_df["location_type"] == 0)
+        & (stops_df["location_type"] == LocationTypeEnum.PLATFORMSTOP.value)
     ]
 
     station_to_platforms: dict[str, list[str]] = {

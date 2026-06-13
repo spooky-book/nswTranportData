@@ -9,7 +9,8 @@ from flask import Flask
 from api.stations import stations_bp
 from api.stops import stops_bp
 from api.stop_stats import stop_stats_bp
-from api.route_stats import route_stats_bp
+from api.trip_stats import trip_stats_bp
+from api.trips import trips_bp
 from api.isochrone import isochrone_bp
 from config import FLASK_PORT
 
@@ -22,7 +23,8 @@ def create_app() -> Flask:
     app.register_blueprint(stations_bp)
     app.register_blueprint(stops_bp)
     app.register_blueprint(stop_stats_bp)
-    app.register_blueprint(route_stats_bp)
+    app.register_blueprint(trip_stats_bp)
+    app.register_blueprint(trips_bp)
     app.register_blueprint(isochrone_bp)
 
     @app.route("/")
@@ -45,9 +47,12 @@ def create_app() -> Flask:
                 # Stop statistics endpoint
                 "stop_stats": "POST /api/stop-stats",
                 "stop_stats_docs": "See endpoint docstring for full request/response schema",
-                # Route statistics endpoint
-                "route_stats": "POST /api/route-stats",
-                "route_stats_docs": "See endpoint docstring for full request/response schema",
+                # Trip statistics endpoint
+                "trip_stats": "POST /api/trip-stats",
+                "trip_stats_docs": "See endpoint docstring for full request/response schema",
+                # Journey planning endpoint
+                "trips": "POST /api/trips",
+                "trips_docs": "See endpoint docstring for full request/response schema",
                 # Isochrone endpoint
                 "isochrone": "POST /api/isochrone",
                 "isochrone_docs": "See endpoint docstring for full request/response schema",

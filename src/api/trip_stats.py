@@ -1,7 +1,7 @@
 """
 Route Statistics API blueprint.
 
-Provides POST /api/route-stats which computes point-to-point service statistics
+Provides POST /api/trip-stats which computes point-to-point service statistics
 between an origin station and a destination station (direct trains only).
 
 Request body (JSON, origin and destination required):
@@ -66,7 +66,7 @@ from api.stop_stats import (
     _validate_time,
 )
 
-route_stats_bp = Blueprint("route_stats", __name__, url_prefix="/api")
+trip_stats_bp = Blueprint("trip_stats", __name__, url_prefix="/api")
 
 _DEFAULT_WINDOW_START = "00:00:00"
 _DEFAULT_WINDOW_END = "29:59:59"
@@ -80,8 +80,8 @@ def _time_to_seconds(t: str) -> int:
     return h * 3600 + m * 60 + s
 
 
-@route_stats_bp.route("/route-stats", methods=["POST"])
-def get_route_stats():
+@trip_stats_bp.route("/trip-stats", methods=["POST"])
+def get_trip_stats():
     body: dict = request.get_json(silent=True) or {}
 
     # ── Parse & validate mode ──────────────────────────────────────────────

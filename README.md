@@ -61,7 +61,8 @@ The Stations API starts at [http://localhost:5000](http://localhost:5000). Avail
 | `GET /api/stations?search=central` | Search stations by name |
 | `GET /api/stations?mode=light_rail_parramatta` | List stations for a specific transport mode |
 | `POST /api/stop-stats` | Compute daily service statistics per station |
-| `POST /api/route-stats` | Compute point-to-point service statistics between stations (direct trains) |
+| `POST /api/trip-stats` | Compute point-to-point service statistics between stations (direct trains) |
+| `POST /api/trips` | Find transit journeys (including transfers) between two stations |
 | `POST /api/isochrone` | Compute a walking/biking reachability polygon (requires downloaded OSMnx graph) |
 | `GET /api/map` | Interactive Leaflet UI for exploring the Isochrone API visually |
 | `GET /api/network` | Debugging endpoint that returns the raw OpenStreetMap walkable graph |
@@ -95,7 +96,8 @@ nswTransportData/
 │   ├── config.py            # Paths, env vars, transport mode definitions
 │   ├── api/
 │   │   ├── isochrone.py     # /api/isochrone Blueprint
-│   │   ├── route_stats.py   # /api/route-stats Blueprint
+│   │   ├── trip_stats.py    # /api/trip-stats Blueprint
+│   │   ├── trips.py         # /api/trips Blueprint (journey planner)
 │   │   ├── stations.py      # /api/stations Blueprint
 │   │   └── stop_stats.py    # /api/stop-stats Blueprint
 │   └── gtfs/

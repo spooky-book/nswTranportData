@@ -13,7 +13,7 @@ from gtfs.downloader import get_gtfs_zip_path
 
 # In-memory cache: mode name → Feed object
 _feed_cache: dict[str, gk.Feed] = {}
-_feed_lock = threading.Lock()
+_feed_lock = threading.RLock()
 
 
 def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
@@ -37,6 +37,15 @@ def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
         if mode in _feed_cache:
             return _feed_cache[mode]
 
+        if mode == "sydney_trains_and_metro":
+            print(f"[loader] Creating combined feed for {mode}...")
+            feed_trains = get_feed("sydney_trains")
+            feed_metro = get_feed("sydney_metro")
+            feed = _merge_feeds(feed_trains, feed_metro)
+            _feed_cache[mode] = feed
+            print(f"[loader] Combined feed loaded: {len(feed.stops)} stops, {len(feed.routes)} routes")
+            return feed
+
         zip_path = get_gtfs_zip_path(mode)
         print(f"[loader] Loading GTFS feed from {zip_path} ...")
     
@@ -48,6 +57,38 @@ def get_feed(mode: str = DEFAULT_MODE) -> gk.Feed:
         print(f"[loader] Feed loaded: {len(feed.stops)} stops, {len(feed.routes)} routes")
         
     return feed
+
+
+def _merge_feeds(f1: gk.Feed, f2: gk.Feed) -> gk.Feed:
+    """Merge two GTFS Kit Feeds into a single Feed."""
+    import copy
+    import pandas as pd
+
+    merged = copy.copy(f1)
+    
+    def merge_df(attr: str, subset: list[str] | None = None) -> None:
+        df1 = getattr(f1, attr, None)
+        df2 = getattr(f2, attr, None)
+        
+        if df1 is not None and df2 is not None:
+            if subset:
+                combined = pd.concat([df1, df2]).drop_duplicates(subset=subset, keep="first")
+            else:
+                combined = pd.concat([df1, df2]).drop_duplicates()
+            setattr(merged, attr, combined)
+        elif df2 is not None:
+            setattr(merged, attr, df2)
+
+    merge_df("agency", ["agency_id"])
+    merge_df("stops", ["stop_id"])
+    merge_df("routes", ["route_id"])
+    merge_df("trips", ["trip_id"])
+    merge_df("stop_times", ["trip_id", "stop_sequence"])
+    merge_df("calendar", ["service_id"])
+    merge_df("calendar_dates", ["service_id", "date", "exception_type"])
+    merge_df("shapes", ["shape_id", "shape_pt_sequence"])
+
+    return merged
 
 
 def _normalise_feed(feed: gk.Feed) -> None:

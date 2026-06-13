@@ -1,0 +1,2 @@
+[lfs]
+fetchexclude = "data/osmnx/sydney_walk.graphml"

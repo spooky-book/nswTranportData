@@ -66,7 +66,17 @@ The Stations API starts at [http://localhost:5000](http://localhost:5000). Avail
 | `GET /api/map` | Interactive Leaflet UI for exploring the Isochrone API visually |
 | `GET /api/network` | Debugging endpoint that returns the raw OpenStreetMap walkable graph |
 
-> **Note:** On first request for a transit mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`). The Isochrone API requires you to run `uv run python scripts/download_graph.py` first to generate the massive local street network.
+> **Note:** On first request for a transit mode, the GTFS data will be downloaded (requires `TRANSPORT_NSW_API_KEY`).
+> The Isochrone API requires the local street network file `data/osmnx/sydney_walk.graphml` to exist. To keep the repository clone fast, this large file is stored via Git LFS and is configured to be skipped on initial clone.
+> 
+> To pull the pre-downloaded walking graph, make sure you have [Git LFS](https://git-lfs.com/) installed and run:
+> ```bash
+> git lfs pull
+> ```
+> Alternatively, you can generate/download it fresh from scratch by running:
+> ```bash
+> uv run python scripts/download_graph.py
+> ```
 
 
 
@@ -77,6 +87,8 @@ nswTransportData/
 ├── pyproject.toml           # Project metadata & dependencies (uv)
 ├── uv.lock                  # Pinned dependency lockfile
 ├── .python-version          # Python version pin (3.14)
+├── .lfsconfig               # Git LFS local fetch exclude rules
+├── .gitattributes           # Git attributes registering sydney_walk.graphml with LFS
 │
 ├── src/                     # Flask package (import root = src/)
 │   ├── app.py               # Flask app factory & entry point
@@ -95,7 +107,7 @@ nswTransportData/
 │   ├── generate_supermarket_isochrones.py
 │   └── generate_station_isochrones.py
 │
-└── data/                    # Downloaded GTFS data (git-ignored)
+└── data/                    # Downloaded GTFS data (git-ignored except walk graph)
 ```
 
 > **Import convention**: All modules inside `src/` import relative to `src/` as the root

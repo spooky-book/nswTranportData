@@ -13,7 +13,10 @@ env/
 .vscode/
 
 # Project specific data and outputs
-/data/
+/data/*
+!/data/osmnx/
+/data/osmnx/*
+!/data/osmnx/sydney_walk.graphml
 nsw_gtfs.zip
 
 # OS generated files

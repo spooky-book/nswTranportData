@@ -156,7 +156,8 @@ nswTranportData/
 ├── .gitattributes           # Registers sydney_walk.graphml with Git LFS
 ├── .lfsconfig               # Excludes the walking graph from default LFS fetches
 ├── README.md
-├── agents.md                # Detailed context for AI coding agents
+├── AGENTS.md                # Detailed context for AI coding agents
+├── CLAUDE.md                # Imports AGENTS.md for Claude Code
 │
 ├── src/                     # Flask app (import root = src/)
 │   ├── app.py               # App factory, blueprint registration & entry point

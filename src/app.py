@@ -1,7 +1,7 @@
 """
 Flask application entry point.
 
-Creates and runs the Flask app with the stations and stops API blueprints.
+Creates and runs the Flask app with the API and HTML page blueprints.
 """
 
 from flask import Flask
@@ -14,6 +14,7 @@ from api.trips import trips_bp
 from api.isochrone import isochrone_bp
 from api.rail_network import rail_network_bp
 from config import FLASK_PORT
+from pages import pages_bp
 
 
 def create_app() -> Flask:
@@ -28,8 +29,9 @@ def create_app() -> Flask:
     app.register_blueprint(trips_bp)
     app.register_blueprint(isochrone_bp)
     app.register_blueprint(rail_network_bp)
+    app.register_blueprint(pages_bp)
 
-    @app.route("/")
+    @app.route("/api")
     def index():
         return {
             "name": "NSW Transport Data API",
@@ -61,6 +63,11 @@ def create_app() -> Flask:
                 "network": "/api/network?lat=<lat>&lon=<lon>",
                 # Rail network endpoint (stations + line geometry for the transport map)
                 "rail_network": "/api/rail-network",
+            },
+            "pages": {
+                "home": "/",
+                "transport_map": "/map/transport",
+                "isochrone_map": "/map/isochrone",
             },
         }
 

@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Transport Map</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ url_for('static', filename='basemaps.js') }}"></script>
+
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-glass: rgba(255, 255, 255, 0.85);
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            background-color: #f3f4f6;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* Glassmorphism Panel */
+        .glass-panel {
+            position: absolute;
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .control-panel {
+            top: 20px;
+            left: 20px;
+            width: min(320px, calc(100vw - 32px));
+            box-sizing: border-box;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+        }
+
+        .home-link {
+            display: inline-block;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .home-link:hover {
+            text-decoration: underline;
+        }
+
+        .header h1 {
+            margin: 0 0 4px 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 0.875rem;
+            color: var(--text-muted);
+        }
+
+        .section-label {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+            margin-bottom: -8px;
+        }
+
+        input[type="search"] {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 10px 12px;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            font-size: 0.875rem;
+            background: white;
+            outline: none;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+
+        input[type="search"]:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+        }
+
+        .toggle-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .toggle {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid #E5E7EB;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .toggle input {
+            width: 16px;
+            height: 16px;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .toggle .swatch {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+            flex-shrink: 0;
+        }
+
+        .toggle .name {
+            flex: 1;
+        }
+
+        .toggle .count {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .summary {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+        }
+
+        #status {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #status[hidden] {
+            display: none;
+        }
+
+        #status.error {
+            color: #DC2626;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(79, 70, 229, 0.25);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        button.secondary {
+            background-color: #ffffff;
+            color: var(--text-main);
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button.secondary:hover {
+            background-color: #f3f4f6;
+        }
+
+        /* Station popup */
+        .station-popup h3 {
+            margin: 0 0 2px;
+            font-size: 1rem;
+            color: var(--text-main);
+        }
+
+        .station-popup .meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+        }
+
+        .station-popup .chips, .station-popup .lines {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .chip {
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 999px;
+            color: white;
+        }
+
+        .line-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: white;
+            min-width: 20px;
+            text-align: center;
+        }
+
+        .station-popup a {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .station-popup a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="glass-panel control-panel">
+        <div class="header">
+            <a class="home-link" href="{{ url_for('pages.home') }}">&larr; Home</a>
+            <h1>Transport Map</h1>
+            <p>Train and metro stations across NSW</p>
+        </div>
+
+        <div id="status"><span class="spinner"></span><span>Loading stations&hellip; the first load downloads and parses timetables, so it can take a minute.</span></div>
+
+        <div id="controls" hidden>
+            <div style="display: flex; flex-direction: column; gap: 16px;">
+                <input type="search" id="search" list="station-names" placeholder="Search for a station&hellip;" autocomplete="off">
+                <datalist id="station-names"></datalist>
+
+                <div class="section-label">Show</div>
+                <div class="toggle-list" id="category-toggles"></div>
+
+                <label class="toggle">
+                    <input type="checkbox" id="show-lines" checked>
+                    <span class="name">Show lines</span>
+                </label>
+
+                <div class="summary" id="summary"></div>
+
+                <button class="secondary" id="btn-fit">Zoom to visible stations</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Stations take the colour of their first enabled category in this order
+        const CATEGORY_ORDER = ['sydney_trains', 'metro', 'intercity', 'regional'];
+
+        const map = L.map('map', { zoomControl: false }).setView([-33.85, 151.05], 11);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        addBasemaps(map);
+
+        map.createPane('lines').style.zIndex = 410;
+        map.createPane('stations').style.zIndex = 420;
+
+        const linesLayer = L.layerGroup().addTo(map);
+        const stationsLayer = L.layerGroup().addTo(map);
+
+        let network = null;
+        let lineInfo = {};
+        let markersById = {};
+        const enabled = new Set(CATEGORY_ORDER);
+
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+
+        function stationRadius() {
+            const z = map.getZoom();
+            return z < 9 ? 3 : z < 12 ? 5 : 7;
+        }
+
+        function primaryCategory(station) {
+            return CATEGORY_ORDER.find((c) => enabled.has(c) && station.categories.includes(c));
+        }
+
+        function popupHtml(station) {
+            const chips = CATEGORY_ORDER
+                .filter((c) => station.categories.includes(c))
+                .map((c) => `<span class="chip" style="background:${network.categories[c].color}">${escapeHtml(network.categories[c].label)}</span>`)
+                .join('');
+            const lines = station.lines
+                .map((l) => {
+                    const info = lineInfo[l] || { color: '#6B7280', name: l };
+                    return `<span class="line-badge" style="background:${info.color}" title="${escapeHtml(info.name)}">${escapeHtml(l)}</span>`;
+                })
+                .join('');
+            const isoUrl = `{{ url_for('pages.isochrone_map') }}?lat=${station.lat}&lon=${station.lon}`;
+            return `<div class="station-popup">
+                <h3>${escapeHtml(station.stop_name)}</h3>
+                <div class="meta">Stop ID ${escapeHtml(station.stop_id)} &middot; ${station.lat.toFixed(5)}, ${station.lon.toFixed(5)}</div>
+                <div class="chips">${chips}</div>
+                <div class="lines">${lines}</div>
+                <a href="${isoUrl}">Walking isochrone from here &rarr;</a>
+            </div>`;
+        }
+
+        function render() {
+            linesLayer.clearLayers();
+            stationsLayer.clearLayers();
+            markersById = {};
+
+            if (document.getElementById('show-lines').checked) {
+                // Draw regional first so local lines sit on top where they share track
+                const features = network.lines.features
+                    .filter((f) => enabled.has(f.properties.category))
+                    .sort((a, b) => CATEGORY_ORDER.indexOf(b.properties.category) - CATEGORY_ORDER.indexOf(a.properties.category));
+                L.geoJSON({ type: 'FeatureCollection', features }, {
+                    pane: 'lines',
+                    style: (f) => ({ color: f.properties.color, weight: 4, opacity: 0.85 }),
+                    onEachFeature: (f, layer) => layer.bindTooltip(`${escapeHtml(f.properties.line)} &middot; ${escapeHtml(f.properties.name)}`, { sticky: true }),
+                }).addTo(linesLayer);
+            }
+
+            let shown = 0;
+            for (const station of network.stations) {
+                const cat = primaryCategory(station);
+                if (!cat) continue;
+                shown++;
+                const marker = L.circleMarker([station.lat, station.lon], {
+                    pane: 'stations',
+                    radius: stationRadius(),
+                    color: '#ffffff',
+                    weight: 1.5,
+                    fillColor: network.categories[cat].color,
+                    fillOpacity: 1,
+                })
+                    .bindTooltip(escapeHtml(station.stop_name), { direction: 'top', offset: [0, -4] })
+                    .bindPopup(() => popupHtml(station), { maxWidth: 280 });
+                marker.addTo(stationsLayer);
+                markersById[station.stop_id] = marker;
+            }
+
+            document.getElementById('summary').textContent =
+                `${shown} of ${network.stations.length} stations shown`;
+        }
+
+        function buildControls() {
+            const counts = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, 0]));
+            for (const s of network.stations) {
+                for (const c of s.categories) counts[c] = (counts[c] || 0) + 1;
+            }
+
+            const container = document.getElementById('category-toggles');
+            for (const c of CATEGORY_ORDER) {
+                const { label, color } = network.categories[c];
+                const row = document.createElement('label');
+                row.className = 'toggle';
+                row.innerHTML = `<input type="checkbox" data-category="${c}" checked>
+                    <span class="swatch" style="background:${color}"></span>
+                    <span class="name">${escapeHtml(label)}</span>
+                    <span class="count">${counts[c]}</span>`;
+                row.querySelector('input').addEventListener('change', (e) => {
+                    e.target.checked ? enabled.add(c) : enabled.delete(c);
+                    render();
+                });
+                container.appendChild(row);
+            }
+
+            document.getElementById('station-names').innerHTML = network.stations
+                .map((s) => `<option value="${escapeHtml(s.stop_name)}"></option>`)
+                .join('');
+        }
+
+        function setCategoryEnabled(category) {
+            enabled.add(category);
+            document.querySelector(`input[data-category="${category}"]`).checked = true;
+        }
+
+        document.getElementById('search').addEventListener('change', (e) => {
+            const query = e.target.value.trim().toLowerCase();
+            if (!query) return;
+            const station = network.stations.find((s) => s.stop_name.toLowerCase() === query)
+                || network.stations.find((s) => s.stop_name.toLowerCase().includes(query));
+            if (!station) return;
+            if (!primaryCategory(station)) {
+                setCategoryEnabled(CATEGORY_ORDER.find((c) => station.categories.includes(c)));
+                render();
+            }
+            map.flyTo([station.lat, station.lon], 14, { duration: 0.8 });
+            map.once('moveend', () => markersById[station.stop_id].openPopup());
+        });
+
+        document.getElementById('show-lines').addEventListener('change', render);
+
+        document.getElementById('btn-fit').addEventListener('click', () => {
+            const visible = network.stations.filter(primaryCategory);
+            if (visible.length) {
+                map.fitBounds(L.latLngBounds(visible.map((s) => [s.lat, s.lon])), { padding: [40, 40] });
+            }
+        });
+
+        map.on('zoomend', () => {
+            const r = stationRadius();
+            stationsLayer.eachLayer((m) => m.setRadius(r));
+        });
+
+        async function load() {
+            const status = document.getElementById('status');
+            try {
+                const res = await fetch('/api/rail-network');
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.hint ? `${data.error} ${data.hint}` : data.error);
+                network = data;
+                lineInfo = Object.fromEntries(network.lines.features.map((f) => [f.properties.line, f.properties]));
+                buildControls();
+                render();
+                status.hidden = true;
+                document.getElementById('controls').hidden = false;
+            } catch (err) {
+                status.className = 'error';
+                status.textContent = `Couldn't load the rail network: ${err.message}`;
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

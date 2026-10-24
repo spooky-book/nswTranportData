@@ -12,9 +12,9 @@
 
 A **Python 3.14 / Flask** application that consumes **GTFS schedule** data from the
 [Transport for NSW (TfNSW) Open Data API](https://opendata.transport.nsw.gov.au/) and
-exposes it via a JSON API plus a small browser UI. It is used to:
+exposes it via a JSON API plus a small browser UI (home page, transport map, isochrone explorer). It is used to:
 
-1. List and search stations/stops for each NSW transit mode.
+1. List and search stations/stops for each NSW transit mode, and view train and metro stations and lines on a map.
 2. Compute service statistics: per-station daily stats, and direct point-to-point headways and travel times.
 3. Plan journeys between stations, including transfers.
 4. Compute walking/cycling **isochrones** on a local OpenStreetMap graph, and explore them in a Leaflet UI.
@@ -60,7 +60,8 @@ uv run python scripts/download_graph.py   # ...or rebuild that graph from Overpa
 nswTranportData/
 ├── src/                          # Flask app (import root = src/)
 │   ├── __init__.py
-│   ├── app.py                    # create_app(): registers blueprints, GET / index; entry point
+│   ├── app.py                    # create_app(): registers blueprints, GET /api index; entry point
+│   ├── pages.py                  # HTML pages: GET /, /map/transport, /map/isochrone (+ /api/map redirect)
 │   ├── config.py                 # PROJECT_ROOT, DATA_DIR, API key, TRANSPORT_MODES, DEFAULT_MODE, FLASK_PORT
 │   ├── constants.py              # LocationTypeEnum (GTFS location_type 0–4)
 │   ├── api/
@@ -70,12 +71,17 @@ nswTranportData/
 │   │   ├── stop_stats.py         # POST /api/stop-stats  (also owns shared validation helpers)
 │   │   ├── trip_stats.py         # POST /api/trip-stats  (also owns _time_to_seconds)
 │   │   ├── trips.py              # POST /api/trips       (journey planner with transfers)
-│   │   └── isochrone.py          # POST /api/isochrone, GET /api/map, GET /api/network
+│   │   ├── isochrone.py          # POST /api/isochrone, GET /api/network
+│   │   └── rail_network.py       # GET  /api/rail-network (stations + line geometry for the transport map)
 │   ├── gtfs/
 │   │   ├── __init__.py
 │   │   ├── downloader.py         # Downloads & caches GTFS zips from TfNSW (per Sydney date)
 │   │   └── loader.py             # gtfs_kit Feed loading, normalising, filtering, merging, caching
+│   ├── static/
+│   │   └── basemaps.js           # addBasemaps(map): shared keyless basemap switcher for both map pages
 │   └── templates/
+│       ├── home.html             # Home page (links to maps and API)
+│       ├── transport_map.html    # Transport Map UI (Leaflet from unpkg CDN)
 │       └── isochrone_map.html    # Isochrone Explorer UI (Leaflet + Turf.js from unpkg CDN)
 │
 ├── scripts/                      # Standalone scripts (see §6)
@@ -107,9 +113,18 @@ nswTranportData/
 ### 4.1 `src/app.py`: Application Factory
 
 - `create_app()` registers `stations_bp`, `stops_bp`, `stop_stats_bp`, `trip_stats_bp`,
-  `trips_bp` and `isochrone_bp` (all use `url_prefix="/api"`).
-- `GET /` returns a hand-maintained JSON index of endpoints. Update it when you add an endpoint.
+  `trips_bp`, `isochrone_bp` and `rail_network_bp` (all use `url_prefix="/api"`), plus `pages_bp` (no prefix).
+- `GET /api` returns a hand-maintained JSON index of endpoints and pages. Update it when you add one.
 - `uv run python src/app.py` runs with `debug=True` on `FLASK_PORT`.
+
+### 4.1a `src/pages.py`: HTML Pages
+
+- `GET /` renders `home.html`: cards for each map plus a hand-maintained table of API endpoints. Update it when you add a page or endpoint.
+- `GET /map/transport` renders `transport_map.html`; `GET /map/isochrone` renders `isochrone_map.html`.
+- `GET /api/map` (the old isochrone URL) 301-redirects to `/map/isochrone`.
+- Templates link to each other with `url_for('pages.<endpoint>')`. Both map pages load `static/basemaps.js` and call
+  `addBasemaps(map)` for the basemap switcher (Esri Light Gray default, OSM, CyclOSM, NSW Imagery; all keyless —
+  CARTO tiles now need an API key, which is why they were dropped).
 
 ### 4.2 `src/config.py`: Configuration
 
@@ -215,10 +230,27 @@ nswTranportData/
   Returns `{lat, lon, speed, max_duration_minutes, resolution, isochrone: <GeoJSON Polygon>, ...}`.
 - **Hidden dependency:** `scikit-learn` is never imported directly, but `osmnx.distance.nearest_nodes`
   needs it for this unprojected graph.
-- `GET /api/map` renders `templates/isochrone_map.html`, a single file with inline JS that loads Leaflet 1.9.4
-  and Turf 6 from unpkg. The UI calls `/api/isochrone` and `/api/network`, can toggle the street network
-  overlay, import/export GeoJSON layers, and union, intersect or XOR layers with Turf.
+- The UI is `GET /map/isochrone` (served by `pages.py`), `templates/isochrone_map.html`, a single file with inline JS
+  that loads Leaflet 1.9.4 and Turf 6 from unpkg. The UI calls `/api/isochrone` and `/api/network`, can toggle the
+  street network overlay, import/export GeoJSON layers, and union, intersect or XOR layers with Turf.
+  `?lat=&lon=` pre-fills the origin (the transport map's station popups link here).
 - `GET /api/network?lat=&lon=` returns graph edges within ±0.015° (about 1.5 km) as GeoJSON for debugging.
+
+### 4.12 `src/api/rail_network.py`: `GET /api/rail-network`
+
+- Returns `{categories, stations, lines}` for the transport map; full schema in the module docstring.
+- Built from the `sydney_trains` and `sydney_metro` feeds only. The `sydney_trains` feed already contains NSW TrainLink
+  intercity and regional trains (agency `NSWTrains`); `nsw_trains` is mostly coaches and only adds a few Victorian/border
+  stops, so it isn't used.
+- Each route gets a category: `metro` (metro feed), `sydney_trains` (agency `SydneyTrains`), `regional` (NSW TrainLink
+  route whose `route_desc` starts with "NSW TrainLink", i.e. XPT/Xplorer), otherwise `intercity`. Routes with no
+  `route_short_name` ("Out Of Service") are skipped.
+- Stations are parent stations (platforms from `stop_times` mapped up via `parent_station`) with the sets of categories
+  and line short names that serve them.
+- Lines are one GeoJSON feature per `route_short_name`: the union of every shape its trips use, line-merged, simplified
+  (~5 m) and rounded to 5 decimals (~390 KB total). Shapes are split wherever consecutive points are more than 20 km apart,
+  because some shapes jump straight to a far terminus (e.g. Broken Hill → Perth) with no track geometry in between.
+- Cached per process like the feeds (double-checked locking); the first call takes ~10 s after the feeds are loaded.
 
 ---
 
@@ -231,9 +263,12 @@ TfNSW GTFS API ──(HTTPS + apikey)──► gtfs/downloader.py ──► data
                                     gtfs/loader.py: read_feed → normalise → filter (→ merge) → in-memory cache
                                                                      │
                                                                      ▼
-                     api/stations · stops · stop_stats · trip_stats · trips  (Flask, src/app.py)
+                     api/stations · stops · stop_stats · trip_stats · trips · rail_network  (Flask, src/app.py)
+                                                                     │
+                                                                     ▼
+                                                     /map/transport UI (via /api/rail-network)
 
-OSM (osmnx) ──► scripts/download_graph.py ──► data/osmnx/sydney_walk.graphml ──► api/isochrone.py ──► /api/map UI
+OSM (osmnx) ──► scripts/download_graph.py ──► data/osmnx/sydney_walk.graphml ──► api/isochrone.py ──► /map/isochrone UI
 
 scripts/generate_*_isochrones.py, scripts/all_to_central.py ──(HTTP to localhost:5000)──► *.geojson / *.csv
 ```
@@ -321,10 +356,19 @@ To add a mode, add an entry to `TRANSPORT_MODES` in `src/config.py`, then update
 ### Adding an endpoint
 
 1. Create a `Blueprint(..., url_prefix="/api")` in `src/api/` and register it in `create_app()` (`src/app.py`).
-2. List it in the hand-maintained index returned by `GET /` and in the endpoint table in `README.md`.
+2. List it in the hand-maintained index returned by `GET /api`, the endpoint table in `templates/home.html`,
+   and the endpoint table in `README.md`.
 3. Read the body with `request.get_json(silent=True) or {}`, validate it up front, and return errors as
    `jsonify({"error": ..., "hint": ...}), <status>`: 400 for validation, 500 for feed or graph load failures.
 4. Document the request and response schema in the module docstring.
+
+### Adding a page
+
+1. Add a route to `pages_bp` in `src/pages.py` that renders a template in `src/templates/`.
+2. Add a card for it in `templates/home.html`, list it under `"pages"` in the `GET /api` index, and add it to the
+   pages table in `README.md`.
+3. For a map page, load Leaflet 1.9.4 from unpkg and `{{ url_for('static', filename='basemaps.js') }}`, call
+   `addBasemaps(map)`, and include a `&larr; Home` link to `url_for('pages.home')`.
 
 ---
 

@@ -28,17 +28,11 @@ from pathlib import Path
 
 import networkx as nx
 import osmnx as ox
-from flask import Blueprint, jsonify, request, render_template
+from flask import Blueprint, jsonify, request
 from shapely.geometry import MultiPoint
 import threading
 
 isochrone_bp = Blueprint("isochrone", __name__, url_prefix="/api")
-
-
-@isochrone_bp.route("/map", methods=["GET"])
-def isochrone_map():
-    """Serves the interactive frontend UI for the Isochrone generator."""
-    return render_template("isochrone_map.html")
 
 
 # Global cache for the graph

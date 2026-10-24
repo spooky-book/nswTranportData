@@ -7,6 +7,7 @@ A Python/Flask application that consumes [GTFS (General Transit Feed Specificati
 - **Stations & Stops API** — List and search stations, platforms, entrances and other GTFS stop types for any supported mode.
 - **Service Statistics** — Per-station daily stats (`/api/stop-stats`) and direct point-to-point stats with headways and travel times (`/api/trip-stats`).
 - **Journey Planner** — Timetable-based routing between two stations, including transfers (`/api/trips`).
+- **Transport Map** — Every Sydney Trains, Sydney Metro and NSW TrainLink (intercity and regional) station and line on one map, with per-network toggles, station search and a popup listing each station's lines.
 - **Isochrone Explorer** — Walking/cycling reachability polygons computed on a local OpenStreetMap street graph, with an interactive Leaflet UI for generating, importing/exporting, and merging/intersecting isochrone layers.
 - **Multi-mode Support** — Sydney Trains, Sydney Metro, NSW TrainLink, four light rail networks and two ferry operators, plus a combined trains + metro mode.
 - **Smart Caching** — GTFS zips are downloaded once per (Sydney) day and cached on disk; parsed feeds are cached in memory.
@@ -71,21 +72,31 @@ Run from the **project root**:
 uv run python src/app.py
 ```
 
-The server starts at [http://localhost:5000](http://localhost:5000) (override with the `PORT` environment variable). Open [http://localhost:5000/api/map](http://localhost:5000/api/map) for the Isochrone Explorer UI.
+The server starts at [http://localhost:5000](http://localhost:5000) (override with the `PORT` environment variable). The home page links to every page and endpoint.
+
+## Pages
+
+| Page | Description |
+|---|---|
+| `GET /` | Home page linking to the maps and the JSON API |
+| `GET /map/transport` | Transport Map: train and metro stations and lines, toggleable by network (Sydney Trains, Sydney Metro, Intercity, Regional) |
+| `GET /map/isochrone` | Isochrone Explorer: generate, import/export and combine walking/cycling isochrones. `?lat=&lon=` pre-fills the origin |
+
+`GET /api/map`, the old Isochrone Explorer URL, redirects to `/map/isochrone`.
 
 ## API Endpoints
 
 | Endpoint | Description |
 |---|---|
-| `GET /` | API index listing the available endpoints |
+| `GET /api` | JSON index listing the available endpoints |
 | `GET /api/stations` | List stations (`location_type = 1`) for a mode; falls back to platforms for feeds without stations. Query params: `mode`, `search` |
 | `GET /api/stops` | List any GTFS stop type. Query params: `mode`, `search`, `location_type` (0–4) |
 | `POST /api/stop-stats` | Daily service statistics per station, aggregated across child platforms |
 | `POST /api/trip-stats` | Direct (no-transfer) service stats between two stations: trip counts, headways, travel times |
 | `POST /api/trips` | Journey planner between two stations, including transfers |
 | `POST /api/isochrone` | Walking/cycling reachability polygon (GeoJSON) — requires the walking graph |
-| `GET /api/map` | Interactive Leaflet UI for the isochrone API |
 | `GET /api/network?lat=&lon=` | Debug endpoint: walkable street edges within ~1.5 km of a point, as GeoJSON |
+| `GET /api/rail-network` | Train and metro stations with the lines serving each, plus line geometry as GeoJSON (powers the Transport Map) |
 
 Full request/response schemas are documented in each blueprint's module docstring under `src/api/`.
 
@@ -160,7 +171,8 @@ nswTranportData/
 ├── CLAUDE.md                # Imports AGENTS.md for Claude Code
 │
 ├── src/                     # Flask app (import root = src/)
-│   ├── app.py               # App factory, blueprint registration & entry point
+│   ├── app.py               # App factory, blueprint registration, GET /api index & entry point
+│   ├── pages.py             # HTML pages: /, /map/transport, /map/isochrone
 │   ├── config.py            # Paths, env vars, transport mode definitions
 │   ├── constants.py         # LocationTypeEnum (GTFS location_type values)
 │   ├── api/
@@ -169,12 +181,17 @@ nswTranportData/
 │   │   ├── stop_stats.py    # POST /api/stop-stats (+ shared date/time validation helpers)
 │   │   ├── trip_stats.py    # POST /api/trip-stats
 │   │   ├── trips.py         # POST /api/trips (journey planner)
-│   │   └── isochrone.py     # POST /api/isochrone, GET /api/map, GET /api/network
+│   │   ├── isochrone.py     # POST /api/isochrone, GET /api/network
+│   │   └── rail_network.py  # GET  /api/rail-network (stations + line geometry)
 │   ├── gtfs/
 │   │   ├── downloader.py    # Downloads & caches GTFS zips per day
 │   │   └── loader.py        # Loads/normalises/filters feeds into gtfs_kit.Feed (in-memory cache)
+│   ├── static/
+│   │   └── basemaps.js      # Shared Leaflet basemap switcher
 │   └── templates/
-│       └── isochrone_map.html  # Leaflet + Turf.js Isochrone Explorer UI
+│       ├── home.html            # Home page
+│       ├── transport_map.html   # Transport Map UI
+│       └── isochrone_map.html   # Leaflet + Turf.js Isochrone Explorer UI
 │
 ├── scripts/                 # Graph download & batch generation scripts (see above)
 ├── maps/                    # Legacy generated Folium map (static HTML)

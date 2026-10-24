@@ -82,6 +82,19 @@
             color: var(--text-muted);
         }
 
+        .home-link {
+            display: inline-block;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .home-link:hover {
+            text-decoration: underline;
+        }
+
         .form-group {
             display: flex;
             flex-direction: column;
@@ -277,6 +290,7 @@
     <!-- UI Overlay: Generator -->
     <div class="glass-panel control-panel">
         <div class="header">
+            <a class="home-link" href="{{ url_for('pages.home') }}">&larr; Home</a>
             <h1>Isochrone Explorer</h1>
             <p>Calculate walkable areas</p>
         </div>
@@ -369,6 +383,13 @@
 
     <script>
         // --- MAP INITIALIZATION ---
+        // ?lat=&lon= (e.g. from the transport map) pre-fills the origin
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('lat') && urlParams.has('lon')) {
+            document.getElementById('lat').value = urlParams.get('lat');
+            document.getElementById('lon').value = urlParams.get('lon');
+        }
+
         const initLat = parseFloat(document.getElementById('lat').value) || -33.817579;
         const initLon = parseFloat(document.getElementById('lon').value) || 151.005535;
 

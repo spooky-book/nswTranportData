@@ -32,3 +32,5 @@ Thumbs.db
 temp/
 cache/
 maps/
+# Playwright MCP snapshots/screenshots
+.playwright-mcp/

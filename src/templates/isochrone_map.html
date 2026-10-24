@@ -11,6 +11,7 @@
     
     <!-- Turf.js for Client-side Geometry Operations -->
     <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+    <script src="{{ url_for('static', filename='basemaps.js') }}"></script>
 
     <style>
         :root {
@@ -374,11 +375,7 @@
         const map = L.map('map', { zoomControl: false, preferCanvas: true }).setView([initLat, initLon], 14);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-            subdomains: 'abcd',
-            maxZoom: 20
-        }).addTo(map);
+        addBasemaps(map);
 
         let networkLayer = null;
         let originMarker = L.marker([initLat, initLon]).addTo(map);

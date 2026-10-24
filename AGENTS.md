@@ -245,7 +245,8 @@ nswTranportData/
   precomputes node `penalty_sec`: 30 s at `traffic_signals`, 10 s at `crossing`. Paths are resolved from
   `__file__` (`GRAPH_PATH` lives in this module, not `config.py`).
 - `POST /api/isochrone`: body `{lat, lon, speed=1.4 m/s, max_duration_minutes=15, resolution="high"}`.
-  Finds the nearest node, runs `nx.single_source_dijkstra_path_length` with a weight of
+  The calculation lives in `compute_isochrone(G, lat, lon, speed, max_duration_minutes, resolution)`, which scripts can
+  call directly with `get_graph()`. Finds the nearest node, runs `nx.single_source_dijkstra_path_length` with a weight of
   `length / speed + penalty_sec(v)`, cut off at the time budget, then builds a polygon:
   - `ultra` / `high`: shapely `concave_hull` over the reachable nodes plus edge-geometry points (ratio 0.15 / 0.35).
   - `low`: convex hull of the reachable nodes.

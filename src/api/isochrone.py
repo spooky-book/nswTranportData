@@ -103,18 +103,53 @@ def calculate_isochrone():
     max_duration_minutes = float(body.get("max_duration_minutes", 15))
     resolution = body.get("resolution", "high").lower()
 
-    max_duration_sec = max_duration_minutes * 60
-
     try:
         G = get_graph()
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+    try:
+        result = compute_isochrone(G, lat, lon, speed, max_duration_minutes, resolution)
+    except LookupError as e:
+        return jsonify({"error": str(e)}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    return jsonify(
+        {
+            "lat": lat,
+            "lon": lon,
+            "speed": speed,
+            "max_duration_minutes": max_duration_minutes,
+            "resolution": resolution,
+            "reachable_nodes": result["reachable_nodes"],
+            "fallback_circle": result["fallback_circle"],
+            "isochrone": result["polygon"].__geo_interface__,
+        }
+    )
+
+
+def compute_isochrone(
+    G,
+    lat: float,
+    lon: float,
+    speed: float,
+    max_duration_minutes: float,
+    resolution: str,
+) -> dict:
+    """
+    Compute an isochrone polygon on graph G (from get_graph()).
+
+    Returns {"polygon": shapely geometry, "reachable_nodes": int, "fallback_circle": bool}.
+    Raises LookupError if nothing is reachable. Usable outside a request, e.g. from scripts.
+    """
+    max_duration_sec = max_duration_minutes * 60
+
     # 1. Find the nearest node on the graph to the requested coordinates
     try:
         center_node = ox.distance.nearest_nodes(G, X=lon, Y=lat)
     except Exception as e:
-        return jsonify({"error": f"Failed to find nearest node: {e}"}), 500
+        raise RuntimeError(f"Failed to find nearest node: {e}") from e
 
     # 2. Calculate travel times for all edges dynamically
     # Use ego_graph/Dijkstra to find reachable nodes.
@@ -146,7 +181,7 @@ def calculate_isochrone():
     )
 
     if not reachable_nodes:
-        return jsonify({"error": "No reachable nodes found from this origin."}), 404
+        raise LookupError("No reachable nodes found from this origin.")
 
     # 3. Extract node coordinates
     node_points = []
@@ -191,25 +226,11 @@ def calculate_isochrone():
             # Low resolution / convex hull
             poly = mp.convex_hull
 
-    # Convert the Shapely Polygon to GeoJSON
-    # Using __geo_interface__ which provides valid GeoJSON dictionary
-    try:
-        geojson = poly.__geo_interface__
-    except AttributeError:
-        return jsonify({"error": "Failed to generate valid geometry."}), 500
-
-    return jsonify(
-        {
-            "lat": lat,
-            "lon": lon,
-            "speed": speed,
-            "max_duration_minutes": max_duration_minutes,
-            "resolution": resolution,
-            "reachable_nodes": len(reachable_nodes),
-            "fallback_circle": used_fallback,
-            "isochrone": geojson,
-        }
-    )
+    return {
+        "polygon": poly,
+        "reachable_nodes": len(reachable_nodes),
+        "fallback_circle": used_fallback,
+    }
 
 
 @isochrone_bp.route("/network", methods=["GET"])

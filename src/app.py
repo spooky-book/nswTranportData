@@ -12,6 +12,7 @@ from api.stop_stats import stop_stats_bp
 from api.trip_stats import trip_stats_bp
 from api.trips import trips_bp
 from api.isochrone import isochrone_bp
+from api.rail_network import rail_network_bp
 from config import FLASK_PORT
 
 
@@ -26,6 +27,7 @@ def create_app() -> Flask:
     app.register_blueprint(trip_stats_bp)
     app.register_blueprint(trips_bp)
     app.register_blueprint(isochrone_bp)
+    app.register_blueprint(rail_network_bp)
 
     @app.route("/")
     def index():
@@ -56,6 +58,9 @@ def create_app() -> Flask:
                 # Isochrone endpoint
                 "isochrone": "POST /api/isochrone",
                 "isochrone_docs": "See endpoint docstring for full request/response schema",
+                "network": "/api/network?lat=<lat>&lon=<lon>",
+                # Rail network endpoint (stations + line geometry for the transport map)
+                "rail_network": "/api/rail-network",
             },
         }
 

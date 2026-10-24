@@ -59,5 +59,12 @@ TRANSPORT_MODES: dict[str, dict[str, str]] = {
 
 DEFAULT_MODE = "sydney_trains"
 
+# ── Journey planner transfers ──────────────────────────────────────────────────
+# Minimum connection time = in-station walk (from pathways.txt) + buffer. Pairs of
+# platforms with no pathway data use the default instead. /api/trips can override
+# the buffer per request with "transfer_buffer_secs".
+TRANSFER_BUFFER_SECS = int(os.getenv("TRANSFER_BUFFER_SECS", "30"))
+DEFAULT_TRANSFER_SECS = int(os.getenv("DEFAULT_TRANSFER_SECS", "180"))
+
 # ── Flask ──────────────────────────────────────────────────────────────────────
 FLASK_PORT = int(os.getenv("PORT", "5000"))

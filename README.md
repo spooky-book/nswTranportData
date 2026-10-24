@@ -93,7 +93,7 @@ The server starts at [http://localhost:5000](http://localhost:5000) (override wi
 | `GET /api/stops` | List any GTFS stop type. Query params: `mode`, `search`, `location_type` (0–4) |
 | `POST /api/stop-stats` | Daily service statistics per station, aggregated across child platforms |
 | `POST /api/trip-stats` | Direct (no-transfer) service stats between two stations: trip counts, headways, travel times. Filter by `period` (`all` (default), `early_morning`, `am_peak`, `interpeak`, `pm_peak`, `evening`, `late_night`) or a custom time window |
-| `POST /api/trips` | Journey planner between two stations, including transfers |
+| `POST /api/trips` | Journey planner between two stations, including transfers. Transfer times use real in-station walking times where available (run `scripts/download_pathways.py`), plus a `transfer_buffer_secs` safety margin (default 30) |
 | `POST /api/isochrone` | Walking/cycling reachability polygon (GeoJSON) — requires the walking graph |
 | `GET /api/network?lat=&lon=` | Debug endpoint: walkable street edges within ~1.5 km of a point, as GeoJSON |
 | `GET /api/rail-network` | Train and metro stations with the lines serving each, plus line geometry as GeoJSON (powers the Transport Map) |
@@ -159,6 +159,7 @@ Scripts live in `scripts/` and are run from the project root. All except `downlo
 | `generate_station_isochrones.py` | Isochrones for a hard-coded list of stations | `station_isochrones.geojson` |
 | `generate_supermarket_isochrones.py` | Finds Coles/Woolworths/Aldi stores via OSM and builds isochrones for each | `supermarket_isochrones.geojson` |
 | `all_to_central.py` | Travel-time and headway stats from every station to Central | `stats_to_destination_<id>_date_<date>_time_window_<start>-<end>.csv` |
+| `download_pathways.py` | Downloads TfNSW's in-station walking paths (from the ~300 MB complete GTFS bundle) for realistic journey-planner transfer times. `--from-zip PATH` reuses a bundle you already have | `data/pathways/<date>/pathways.txt` |
 
 Generated `.geojson` files can be loaded into the Isochrone Explorer via **Import**. Several previously generated outputs are committed in the project root.
 
@@ -190,7 +191,8 @@ nswTranportData/
 │   │   └── rail_network.py  # GET  /api/rail-network (stations + line geometry)
 │   ├── gtfs/
 │   │   ├── downloader.py    # Downloads & caches GTFS zips per day
-│   │   └── loader.py        # Loads/normalises/filters feeds into gtfs_kit.Feed (in-memory cache)
+│   │   ├── loader.py        # Loads/normalises/filters feeds into gtfs_kit.Feed (in-memory cache)
+│   │   └── pathways.py      # In-station walking times between platforms, for transfers
 │   ├── static/
 │   │   └── basemaps.js      # Shared Leaflet basemap switcher
 │   └── templates/
@@ -215,6 +217,8 @@ nswTranportData/
 |-------------------------|----------|--------------------------------------------------------|
 | `TRANSPORT_NSW_API_KEY` | Yes*     | TfNSW API key for downloading GTFS data (*not needed if today's feeds are already cached) |
 | `PORT`                  | No       | Flask server port (default: 5000)                      |
+| `TRANSFER_BUFFER_SECS`  | No       | Safety margin added to each journey-planner transfer walk (default: 30) |
+| `DEFAULT_TRANSFER_SECS` | No       | Transfer time used where a station has no pathway data (default: 180) |
 
 ## Development
 

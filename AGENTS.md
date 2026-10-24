@@ -76,7 +76,8 @@ nswTranportData/
 │   ├── gtfs/
 │   │   ├── __init__.py
 │   │   ├── downloader.py         # Downloads & caches GTFS zips from TfNSW (per Sydney date)
-│   │   └── loader.py             # gtfs_kit Feed loading, normalising, filtering, merging, caching
+│   │   ├── loader.py             # gtfs_kit Feed loading, normalising, filtering, merging, caching
+│   │   └── pathways.py           # In-station walking times between platforms (TfNSW pathways.txt)
 │   ├── static/
 │   │   └── basemaps.js           # addBasemaps(map): shared keyless basemap switcher for both map pages
 │   └── templates/
@@ -170,6 +171,17 @@ nswTranportData/
   - It works for every endpoint because they all go through `get_feed`.
 - `clear_cache()` empties the in-memory cache.
 
+### 4.5a `src/gtfs/pathways.py`: In-station Walking Times
+
+- TfNSW publishes `pathways.txt` (walkways, stairs, escalators, lifts, gates, each with `traversal_time` seconds) only
+  in its complete GTFS bundle, not the per-mode feeds. `scripts/download_pathways.py` saves it to
+  `data/pathways/<YYYY-MM-DD>/pathways.txt` (git-ignored); the newest copy is used.
+- Its platform IDs match the `sydney_trains` and `sydney_metro` feeds. `get_walk_secs(from_platform, to_platform)`
+  returns the shortest walk between two platforms (Dijkstra, cached per source platform, capped at 1800 s), or `None`
+  without data. About 284 of 393 train/metro stations have platform-to-platform data; Central ranges 36–378 s.
+- Loaded once per process with double-checked locking; with no file present it logs a hint and every transfer uses
+  the default time.
+
 ### 4.6 `src/api/stations.py`: `GET /api/stations`
 
 - Query params: `search` (case-insensitive substring on `stop_name`), `mode`.
@@ -217,10 +229,12 @@ nswTranportData/
 - For each departure from the origin's platforms inside the time window, it runs Dijkstra over
   (time, transfers) with per-platform Pareto pruning.
 - Body: `origin_stop_id`, `destination_stop_id` (required); `mode`, `max_transfers` (default 5),
-  `time_window_start/end`, `dates`.
-- Transfers are allowed between platforms that share a parent station. The minimum connection time comes
-  from `get_transfer_time_secs()`, currently a constant **180 s** (it's the hook for per-station values).
-  The longest wait it considers is about 2 h. Walking transfers between different stations are not modelled.
+  `time_window_start/end`, `dates`, `transfer_buffer_secs` (0–1800, default `config.TRANSFER_BUFFER_SECS` = 30).
+- Transfers are allowed between platforms that share a parent station. `get_transfer_time_secs(from_platform,
+  to_platform, buffer)` sets the minimum connection time per platform pair: the in-station walk from
+  `gtfs/pathways.py` plus the buffer, or `config.DEFAULT_TRANSFER_SECS` (180 s, no buffer) when there is no pathway
+  data. Staying on the same platform with pathway data costs just the buffer. The longest wait it considers is
+  about 2 h. Walking transfers between different stations are not modelled.
 - Results are de-duplicated per departure time (keeping the earliest arrival, then the fewest transfers),
   and any journey overtaken by a later departure is dropped.
   Response: `{..., date_records: [{date, journeys: [{departure_time, arrival_time, total_travel_secs, transfers, legs: [...]}]}]}`.
@@ -297,6 +311,7 @@ Configuration is hard-coded as constants at the top of each file.
 | `generate_station_isochrones.py` | Isochrones for a hard-coded `STATIONS_INPUT` list (`stop_id, name, mode`). Writes `station_isochrones.geojson`. |
 | `generate_supermarket_isochrones.py` | Uses OSM to find Coles, Woolworths and Aldi stores, then builds an isochrone for each. Writes `supermarket_isochrones.geojson`. |
 | `all_to_central.py` | Stats from every `sydney_trains` and `sydney_metro` station to Central (`200060`). Writes `stats_to_destination_*.csv`. **Currently broken** (see §11). |
+| `download_pathways.py` | Downloads TfNSW's complete GTFS bundle (~300 MB, needs the API key) and keeps only `pathways.txt` as `data/pathways/<date>/pathways.txt`; `--from-zip PATH` extracts from a bundle you already have. Not an HTTP client of the server; restart the server afterwards. |
 
 ---
 
@@ -386,7 +401,9 @@ To add a mode, add an entry to `TRANSPORT_MODES` in `src/config.py`, then update
 - **`scripts/all_to_central.py` calls `POST /api/route-stats`, which no longer exists.** That endpoint was renamed
   to `/api/trip-stats`, so the script gets 404s until it is updated.
 - **`/api/trips`**: some valid trips may be missing from the results (noted in the commit that added the endpoint; not yet diagnosed).
-- `/api/trips` uses a constant 180 s transfer time (`get_transfer_time_secs`) and does not model walking transfers between stations.
+- `/api/trips` falls back to a flat 180 s transfer at the ~110 train/metro stations without pathway data, and does
+  not model walking transfers between different stations (e.g. Town Hall ↔ Gadigal).
+- `data/pathways/` must be refreshed by hand (`scripts/download_pathways.py`); nothing re-downloads it automatically.
 - `get_feed` caches feeds for the life of the process, so a long-running server keeps serving the day it first loaded.
 - The isochrone graph path is hard-coded in `api/isochrone.py` rather than defined in `config.py`.
 - `/api/isochrone` does not validate `speed`, `max_duration_minutes` or `resolution`; bad values raise 500s.

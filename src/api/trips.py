@@ -12,8 +12,15 @@ Request body (JSON):
     "max_transfers": 5,                // Optional: Maximum allowed transfers (default 5)
     "time_window_start": "08:00:00",   // Optional: HH:MM:SS search start time
     "time_window_end": "09:00:00",     // Optional: HH:MM:SS search end time
-    "dates": ["20260613"]              // Optional: list of YYYYMMDD strings
+    "dates": ["20260613"],             // Optional: list of YYYYMMDD strings
+    "transfer_buffer_secs": 30         // Optional: safety margin added to each transfer walk
+                                       //   (default config.TRANSFER_BUFFER_SECS, 0–1800)
 }
+
+Transfers: the minimum connection time between two platforms is the in-station
+walking time from TfNSW's pathways.txt (see gtfs/pathways.py) plus the buffer.
+Platform pairs with no pathway data use config.DEFAULT_TRANSFER_SECS (180 s)
+with no buffer added.
 
 Response body (JSON):
 {
@@ -23,6 +30,7 @@ Response body (JSON):
     "destination_stop_id": "215020",
     "destination_name": "Parramatta Station",
     "max_transfers": 5,
+    "transfer_buffer_secs": 30,
     "date_records": [
         {
             "date": "2026-06-13",
@@ -58,7 +66,9 @@ import heapq
 import time
 import itertools
 
+from config import DEFAULT_TRANSFER_SECS, TRANSFER_BUFFER_SECS
 from gtfs.loader import get_feed
+from gtfs.pathways import get_walk_secs
 from api.stop_stats import _resolve_dates, _validate_date, _validate_time
 from api.trip_stats import _time_to_seconds
 
@@ -66,14 +76,19 @@ trips_bp = Blueprint("trips", __name__, url_prefix="/api")
 
 _DEFAULT_WINDOW_START = "00:00:00"
 _DEFAULT_WINDOW_END = "29:59:59"
+_MAX_TRANSFER_BUFFER_SECS = 1800
 
 
-def get_transfer_time_secs(station_id: str, from_trip: str, to_trip: str) -> int:
+def get_transfer_time_secs(from_platform: str, to_platform: str, buffer_secs: int) -> int:
     """
-    Returns the minimum transfer time in seconds at a given station.
-    Currently returns a constant 180 seconds (3 minutes).
+    Minimum connection time in seconds from alighting at from_platform to
+    boarding at to_platform: the in-station walk from pathways.txt plus
+    buffer_secs, or DEFAULT_TRANSFER_SECS when there is no pathway data.
     """
-    return 180
+    walk_secs = get_walk_secs(from_platform, to_platform)
+    if walk_secs is None:
+        return DEFAULT_TRANSFER_SECS
+    return walk_secs + buffer_secs
 
 
 def _format_time(seconds: int) -> str:
@@ -99,6 +114,19 @@ def get_trips():
         ), 400
 
     max_transfers = int(body.get("max_transfers", 5))
+
+    transfer_buffer_secs = body.get("transfer_buffer_secs", TRANSFER_BUFFER_SECS)
+    if (
+        isinstance(transfer_buffer_secs, bool)
+        or not isinstance(transfer_buffer_secs, int)
+        or not 0 <= transfer_buffer_secs <= _MAX_TRANSFER_BUFFER_SECS
+    ):
+        return jsonify(
+            {
+                "error": "'transfer_buffer_secs' must be a whole number of seconds.",
+                "hint": f"Use 0–{_MAX_TRANSFER_BUFFER_SECS}; the default is {TRANSFER_BUFFER_SECS}.",
+            }
+        ), 400
 
     raw_dates = body.get("dates")
     requested_dates = []
@@ -335,12 +363,6 @@ def get_trips():
                         )
 
                     if transfers < max_transfers:
-                        # Find transfers from next_plat
-                        transfer_time = get_transfer_time_secs(
-                            get_parent(next_plat), curr_trip, "any"
-                        )
-                        available_time = next_arr + transfer_time
-
                         # We can transfer to any platform in the same parent station
                         parent = get_parent(next_plat)
                         sibling_plats = [
@@ -350,6 +372,11 @@ def get_trips():
                         ]
 
                         for sib in sibling_plats:
+                            # Connection time depends on the walk between these two platforms
+                            available_time = next_arr + get_transfer_time_secs(
+                                next_plat, sib, transfer_buffer_secs
+                            )
+
                             # Binary search or linear scan for next departure
                             deps = stop_deps.get(sib, [])
                             for sib_dep, sib_trip, sib_idx in deps:
@@ -435,6 +462,7 @@ def get_trips():
             "destination_stop_id": dest_id,
             "destination_name": dest_name,
             "max_transfers": max_transfers,
+            "transfer_buffer_secs": transfer_buffer_secs,
             "date_records": date_records,
         }
     )

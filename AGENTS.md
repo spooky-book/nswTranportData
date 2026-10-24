@@ -123,6 +123,19 @@ nswTranportData/
 - `GET /` renders `home.html`: cards for each map plus a hand-maintained table of API endpoints. Update it when you add a page or endpoint.
 - `GET /map/transport` renders `transport_map.html`; `GET /map/isochrone` renders `isochrone_map.html`.
 - `GET /api/map` (the old isochrone URL) 301-redirects to `/map/isochrone`.
+- `GET /map/property-locator` (**temporary, single-purpose; don't generalise or build on it**) renders
+  `property_locator.html`, backed by `GET /api/property-locator?date=` in `api/property_locator.py`. For every train/metro
+  station it reports the median travel time to Central (transfers allowed) and the effective gap between useful trains
+  (Σgap²/Σgap) for three periods: peak (`am_peak`), interpeak, and the official Opal off-peak (departures outside
+  both peaks) trimmed to 05:00–23:00, on one date (default: first Tuesday on or after both today and the 30 Oct 2026 Bankstown metro opening). It uses one
+  backward Connection Scan profile over the `sydney_trains_and_metro` feed (~10 s, cached per date) with the same
+  transfer times as `/api/trips`; medians matched `/api/trips` for Parramatta, Hornsby, Tallawong, Bankstown and
+  Chatswood. Limits (default time/frequency 30/10 peak, 40/20 interpeak, 40/20 off-peak; blank = ignored) are
+  applied in the browser.
+  - 15-min walking areas for matching stations come from `GET /api/property-locator/isochrones`, a file precomputed by
+    `scripts/generate_property_isochrones.py` (~8 min for all 387 stations, via `compute_isochrone()` in
+    `api/isochrone.py`). It's precomputed so the server never has to hold the multi-GB walking graph; the page hides
+    `fallback_circle` features (stations outside the graph, e.g. Newcastle/Central Coast).
 - Templates link to each other with `url_for('pages.<endpoint>')`. Both map pages load `static/basemaps.js` and call
   `addBasemaps(map)` for the basemap switcher (Esri Light Gray default, OSM, CyclOSM, NSW Imagery; all keyless —
   CARTO tiles now need an API key, which is why they were dropped).
@@ -312,6 +325,7 @@ Configuration is hard-coded as constants at the top of each file.
 | `generate_station_isochrones.py` | Isochrones for a hard-coded `STATIONS_INPUT` list (`stop_id, name, mode`). Writes `station_isochrones.geojson`. |
 | `generate_supermarket_isochrones.py` | Uses OSM to find Coles, Woolworths and Aldi stores, then builds an isochrone for each. Writes `supermarket_isochrones.geojson`. |
 | `all_to_central.py` | Stats from every `sydney_trains` and `sydney_metro` station to Central (`200060`). Writes `stats_to_destination_*.csv`. **Currently broken** (see §11). |
+| `generate_property_isochrones.py` | *Temporary page support.* Loads the walking graph in its own process and writes a 15-min walking isochrone for every train/metro station to `data/property_locator/station_isochrones_15min_walk.geojson` (resumable). Gets station coordinates from the running server's `/api/rail-network`. |
 | `download_pathways.py` | Downloads TfNSW's complete GTFS bundle (~300 MB, needs the API key) and keeps only `pathways.txt` as `data/pathways/<date>/pathways.txt`; `--from-zip PATH` extracts from a bundle you already have. Not an HTTP client of the server; restart the server afterwards. |
 
 ---

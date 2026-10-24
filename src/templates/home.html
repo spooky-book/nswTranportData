@@ -87,6 +87,18 @@
             font-weight: 700;
         }
 
+        .card .tag {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: #FEF3C7;
+            color: #92400E;
+            font-size: 0.7rem;
+            font-weight: 600;
+            vertical-align: middle;
+        }
+
         .card p {
             margin: 0;
             font-size: 0.9rem;
@@ -186,6 +198,12 @@
                 <h3>Isochrone Explorer</h3>
                 <p>How far can you walk or cycle in N minutes? Generate isochrones on the Sydney street network, import GeoJSON, and intersect or merge layers.</p>
                 <span class="path">/map/isochrone</span>
+            </a>
+            <a class="card" href="{{ url_for('pages.property_locator') }}">
+                <span class="icon">🏠</span>
+                <h3>Desirable Property Locator <span class="tag">Temporary</span></h3>
+                <p>Stations whose median train time to Central (transfers allowed) is within your peak and off-peak limits, on a map and as a downloadable list.</p>
+                <span class="path">/map/property-locator</span>
             </a>
         </div>
 

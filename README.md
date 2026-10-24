@@ -81,6 +81,7 @@ The server starts at [http://localhost:5000](http://localhost:5000) (override wi
 | `GET /` | Home page linking to the maps and the JSON API |
 | `GET /map/transport` | Transport Map: train and metro stations and lines, toggleable by network (Sydney Trains, Sydney Metro, Intercity, Regional) |
 | `GET /map/isochrone` | Isochrone Explorer: generate, import/export and combine walking/cycling isochrones. `?lat=&lon=` pre-fills the origin |
+| `GET /map/property-locator` | *Temporary.* Desirable Property Locator: stations that meet travel-time-to-Central (median, transfers allowed) and train-frequency limits for peak, interpeak and off-peak, with optional 15-min walking areas, on a map with CSV/JSON download |
 
 `GET /api/map`, the old Isochrone Explorer URL, redirects to `/map/isochrone`.
 
@@ -159,6 +160,7 @@ Scripts live in `scripts/` and are run from the project root. All except `downlo
 | `generate_station_isochrones.py` | Isochrones for a hard-coded list of stations | `station_isochrones.geojson` |
 | `generate_supermarket_isochrones.py` | Finds Coles/Woolworths/Aldi stores via OSM and builds isochrones for each | `supermarket_isochrones.geojson` |
 | `all_to_central.py` | Travel-time and headway stats from every station to Central | `stats_to_destination_<id>_date_<date>_time_window_<start>-<end>.csv` |
+| `generate_property_isochrones.py` | *Temporary.* 15-min walking isochrones around every train/metro station for the Desirable Property Locator (server must be running; ~8 min) | `data/property_locator/station_isochrones_15min_walk.geojson` |
 | `download_pathways.py` | Downloads TfNSW's in-station walking paths (from the ~300 MB complete GTFS bundle) for realistic journey-planner transfer times. `--from-zip PATH` reuses a bundle you already have | `data/pathways/<date>/pathways.txt` |
 
 Generated `.geojson` files can be loaded into the Isochrone Explorer via **Import**. Several previously generated outputs are committed in the project root.

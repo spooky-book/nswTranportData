@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Desirable Property Locator</title>
+
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="{{ url_for('static', filename='basemaps.js') }}"></script>
+
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-glass: rgba(255, 255, 255, 0.92);
+            --text-main: #1F2937;
+            --text-muted: #6B7280;
+            --border-color: rgba(255, 255, 255, 0.2);
+            --match: #16A34A;
+            --partial: #F59E0B;
+            --none: #9CA3AF;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overflow: hidden;
+            background-color: #f3f4f6;
+        }
+
+        #map {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        .glass-panel {
+            position: absolute;
+            z-index: 1000;
+            background: var(--bg-glass);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 22px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1), 0 4px 6px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .control-panel {
+            top: 20px;
+            left: 20px;
+            width: min(470px, calc(100vw - 32px));
+            box-sizing: border-box;
+            max-height: calc(100vh - 40px);
+            overflow: hidden;
+        }
+
+        .home-link {
+            display: inline-block;
+            margin-bottom: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .home-link:hover {
+            text-decoration: underline;
+        }
+
+        .header h1 {
+            margin: 0 0 4px 0;
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--text-main);
+        }
+
+        .header p {
+            margin: 0;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+            line-height: 1.45;
+        }
+
+        /* Limits grid: one row per period */
+        .limits {
+            display: grid;
+            grid-template-columns: 1fr 92px 92px;
+            gap: 6px 10px;
+            align-items: center;
+        }
+
+        .limits .col-head {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-align: center;
+        }
+
+        .limits .period-name {
+            font-size: 0.85rem;
+            font-weight: 700;
+            color: var(--text-main);
+            line-height: 1.2;
+        }
+
+        .limits .period-name .sub {
+            display: block;
+            font-size: 0.7rem;
+            font-weight: 400;
+            color: var(--text-muted);
+        }
+
+        .limits input {
+            width: 100%;
+            box-sizing: border-box;
+            padding: 7px 8px;
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            text-align: center;
+            background: white;
+            outline: none;
+        }
+
+        .limits input:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+        }
+
+        .limits input::placeholder {
+            color: #C4C8CF;
+        }
+
+        .hint {
+            font-size: 0.72rem;
+            color: var(--text-muted);
+            margin-top: -4px;
+        }
+
+        .check {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .legend span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
+        .summary {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .downloads {
+            display: flex;
+            gap: 8px;
+        }
+
+        button.secondary {
+            flex: 1;
+            background-color: #ffffff;
+            color: var(--text-main);
+            border: 1px solid #D1D5DB;
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        button.secondary:hover {
+            background-color: #f3f4f6;
+        }
+
+        .table-wrap {
+            flex: 1 1 auto;
+            overflow: auto;
+            min-height: 120px;
+            border: 1px solid #E5E7EB;
+            border-radius: 8px;
+            background: white;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.78rem;
+        }
+
+        thead {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        th {
+            background: #F9FAFB;
+            text-align: left;
+            font-size: 0.66rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+            padding: 6px 6px;
+            border-bottom: 1px solid #E5E7EB;
+            white-space: nowrap;
+        }
+
+        th[data-sort] {
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th[data-sort]:hover {
+            color: var(--primary);
+        }
+
+        th.group {
+            text-align: center;
+            border-bottom: none;
+            padding-bottom: 0;
+        }
+
+        th.num, td.num {
+            text-align: right;
+            font-variant-numeric: tabular-nums;
+        }
+
+        th.split, td.split {
+            border-left: 1px solid #F3F4F6;
+        }
+
+        td {
+            padding: 5px 6px;
+            border-bottom: 1px solid #F3F4F6;
+            color: var(--text-main);
+        }
+
+        td.name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 150px;
+        }
+
+        tbody tr {
+            cursor: pointer;
+        }
+
+        tbody tr:hover {
+            background: #EEF2FF;
+        }
+
+        td .dot {
+            margin-right: 6px;
+            vertical-align: -1px;
+        }
+
+        td.fail {
+            color: #DC2626;
+            font-weight: 600;
+        }
+
+        #status {
+            font-size: 0.875rem;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #status[hidden] {
+            display: none;
+        }
+
+        #status.error {
+            color: #DC2626;
+        }
+
+        .spinner {
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(79, 70, 229, 0.25);
+            border-radius: 50%;
+            border-top-color: var(--primary);
+            animation: spin 1s linear infinite;
+            flex-shrink: 0;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        #controls {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            min-height: 0;
+            flex: 1;
+        }
+
+        #controls[hidden] {
+            display: none;
+        }
+
+        /* Station popup */
+        .station-popup h3 {
+            margin: 0 0 6px;
+            font-size: 1rem;
+            color: var(--text-main);
+        }
+
+        .station-popup .lines {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            margin-bottom: 8px;
+        }
+
+        .line-badge {
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: white;
+        }
+
+        .station-popup dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 4px 10px;
+            margin: 0 0 8px;
+            font-size: 0.8rem;
+        }
+
+        .station-popup dt {
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .station-popup dd {
+            margin: 0;
+            color: var(--text-main);
+        }
+
+        .station-popup .muted {
+            color: var(--text-muted);
+        }
+
+        .station-popup .fail {
+            color: #DC2626;
+        }
+
+        .station-popup a {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+
+        .station-popup a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="map"></div>
+
+    <div class="glass-panel control-panel">
+        <div class="header">
+            <a class="home-link" href="{{ url_for('pages.home') }}">&larr; Home</a>
+            <h1>Desirable Property Locator</h1>
+            <p id="subtitle">Median train time to Central, transfers allowed.</p>
+        </div>
+
+        <div id="status"><span class="spinner"></span><span>Working out travel times to Central for every station&hellip; this takes about 10 seconds (longer if timetables need downloading).</span></div>
+
+        <div id="controls" hidden>
+            <div class="limits" id="limits">
+                <div></div>
+                <div class="col-head">Max time (min)</div>
+                <div class="col-head">Train every (min)</div>
+            </div>
+            <div class="hint">Leave a box empty to ignore that limit.</div>
+
+            <div class="legend">
+                <span><i class="dot" style="background: var(--match)"></i>Meets every limit</span>
+                <span><i class="dot" style="background: var(--partial)"></i>Meets some</span>
+                <span><i class="dot" style="background: var(--none)"></i>Meets none</span>
+            </div>
+
+            <label class="check"><input type="checkbox" id="show-all"> Include stations that miss a limit</label>
+            <label class="check"><input type="checkbox" id="show-walk"> Show 15-min walking areas around matching stations</label>
+            <div class="hint" id="walk-status" hidden></div>
+
+            <div class="summary" id="summary"></div>
+
+            <div class="downloads">
+                <button class="secondary" id="btn-csv">Download CSV</button>
+                <button class="secondary" id="btn-json">Download JSON</button>
+                <button class="secondary" id="btn-walk" title="15-min walking areas around the matching stations">Walking areas</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead id="table-head"></thead>
+                    <tbody id="station-rows"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Period keys come from /api/property-locator; defaults are the starting limits in minutes
+        const PERIOD_KEYS = ['peak', 'interpeak', 'offpeak'];
+        const DEFAULT_LIMITS = {
+            peak: { time: 30, every: 10 },
+            interpeak: { time: 40, every: 20 },
+            offpeak: { time: 40, every: 20 },
+        };
+        const COLORS = { match: '#16A34A', partial: '#F59E0B', none: '#9CA3AF' };
+
+        const map = L.map('map', { zoomControl: false }).setView([-33.85, 151.05], 11);
+        L.control.zoom({ position: 'bottomright' }).addTo(map);
+        addBasemaps(map);
+
+        map.createPane('walk').style.zIndex = 405;
+        map.createPane('lines').style.zIndex = 410;
+        map.createPane('stations').style.zIndex = 420;
+        const walkLayer = L.layerGroup().addTo(map);
+        const linesLayer = L.layerGroup().addTo(map);
+        const stationsLayer = L.layerGroup().addTo(map);
+
+        // stop_id -> precomputed 15-min walking isochrone Feature (null until loaded)
+        let walkAreas = null;
+        let walkLoading = null;
+
+        let data = null;
+        let lineInfo = {};
+        let markersById = {};
+        let sortKey = 'peak.median_secs';
+
+        const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => (
+            { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+        ));
+        const mins = (secs) => (secs == null ? null : Math.round(secs / 6) / 10);
+        const fmtMins = (secs) => (secs == null ? '—' : `${mins(secs)} min`);
+        const fmtTime = (hms) => {
+            const [h, m, s] = hms.split(':').map(Number);
+            const t = h * 3600 + m * 60 + s + (s === 59 ? 1 : 0);  // 09:59:59 -> 10am
+            const hh = Math.floor(t / 3600) % 24, mm = Math.floor(t / 60) % 60;
+            return `${((hh + 11) % 12) + 1}${mm ? ':' + String(mm).padStart(2, '0') : ''}${hh < 12 ? 'am' : 'pm'}`;
+        };
+        const fmtWindows = (windows) => {
+            // Merge touching windows (e.g. 19:00–22:00 + 22:00–close) for display
+            const merged = [];
+            for (const w of windows) {
+                const last = merged[merged.length - 1];
+                if (last && fmtTime(last.end) === fmtTime(w.start)) last.end = w.end;
+                else merged.push({ ...w });
+            }
+            return merged.map((w) => (w.end >= '29:00:00' ? `after ${fmtTime(w.start)}` : w.start === '00:00:00'
+                ? `before ${fmtTime(w.end)}` : `${fmtTime(w.start)}–${fmtTime(w.end)}`)).join(', ');
+        };
+        const fmtDate = (ymd) => new Date(`${ymd.slice(0, 4)}-${ymd.slice(4, 6)}-${ymd.slice(6)}T12:00:00`)
+            .toLocaleDateString('en-AU', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+
+        function buildLimitInputs() {
+            const grid = document.getElementById('limits');
+            for (const key of PERIOD_KEYS) {
+                const p = data.periods[key];
+                grid.insertAdjacentHTML('beforeend', `
+                    <div class="period-name">${escapeHtml(p.label)}<span class="sub">${escapeHtml(fmtWindows(p.windows))}</span></div>
+                    <input type="number" id="${key}-time" min="1" max="180" placeholder="any" value="${DEFAULT_LIMITS[key].time}" aria-label="${escapeHtml(p.label)} max time">
+                    <input type="number" id="${key}-every" min="1" max="120" placeholder="any" value="${DEFAULT_LIMITS[key].every}" aria-label="${escapeHtml(p.label)} train every">`);
+            }
+            grid.querySelectorAll('input').forEach((input) => input.addEventListener('input', render));
+        }
+
+        function buildTableHead() {
+            const groups = PERIOD_KEYS.map((k) => `<th class="group split" colspan="2">${escapeHtml(data.periods[k].label)}</th>`).join('');
+            const cols = PERIOD_KEYS.map((k) => `
+                <th class="num split" data-sort="${k}.median_secs" title="Median minutes to Central">Time</th>
+                <th class="num" data-sort="${k}.headway_secs" title="Effective minutes between useful trains">Every</th>`).join('');
+            document.getElementById('table-head').innerHTML =
+                `<tr><th></th>${groups}</tr><tr><th data-sort="stop_name">Station</th>${cols}</tr>`;
+            document.querySelectorAll('th[data-sort]').forEach((th) => th.addEventListener('click', () => {
+                sortKey = th.dataset.sort;
+                render();
+            }));
+        }
+
+        // Limits in seconds; null = no limit
+        function limits() {
+            const read = (id) => {
+                const v = document.getElementById(id).value.trim();
+                return v === '' || Number.isNaN(Number(v)) ? null : Number(v) * 60;
+            };
+            return Object.fromEntries(PERIOD_KEYS.map((k) => [k, { time: read(`${k}-time`), every: read(`${k}-every`) }]));
+        }
+
+        function evaluate(station) {
+            const lim = limits();
+            const checks = {};
+            for (const k of PERIOD_KEYS) {
+                const p = station[k];
+                checks[k] = {
+                    time: lim[k].time == null ? null : p.median_secs != null && p.median_secs <= lim[k].time,
+                    every: lim[k].every == null ? null : p.headway_secs != null && p.headway_secs <= lim[k].every,
+                };
+            }
+            const active = PERIOD_KEYS.flatMap((k) => [checks[k].time, checks[k].every]).filter((c) => c !== null);
+            const passed = active.filter(Boolean).length;
+            const status = passed === active.length ? 'match' : passed > 0 ? 'partial' : 'none';
+            return { checks, status };
+        }
+
+        function popupHtml(s) {
+            const lines = s.lines.map((l) => {
+                const info = lineInfo[l] || { color: '#6B7280', name: l };
+                return `<span class="line-badge" style="background:${info.color}" title="${escapeHtml(info.name)}">${escapeHtml(l)}</span>`;
+            }).join('');
+            const cls = (ok) => (ok === false ? 'fail' : '');
+            const rows = PERIOD_KEYS.map((k) => {
+                const p = s[k];
+                const c = s.checks[k];
+                const body = p.median_secs == null
+                    ? '<span class="muted">no trains in this period</span>'
+                    : `<span class="${cls(c.time)}">${fmtMins(p.median_secs)}</span> <span class="muted">(${mins(p.min_secs)}–${mins(p.max_secs)}, ${p.journeys} trains)</span><br>` +
+                      `<span class="${cls(c.every)}">every ${fmtMins(p.headway_secs)}</span> <span class="muted">(longest gap ${fmtMins(p.max_headway_secs)})</span>`;
+                return `<dt>${escapeHtml(data.periods[k].label)}</dt><dd>${body}</dd>`;
+            }).join('');
+            const isoUrl = `{{ url_for('pages.isochrone_map') }}?lat=${s.lat}&lon=${s.lon}`;
+            return `<div class="station-popup">
+                <h3>${escapeHtml(s.stop_name)}</h3>
+                <div class="lines">${lines}</div>
+                <dl>${rows}</dl>
+                <a href="${isoUrl}">Walking isochrone from here &rarr;</a>
+            </div>`;
+        }
+
+        function visibleStations() {
+            const showAll = document.getElementById('show-all').checked;
+            return data.stations
+                .map((s) => ({ ...s, ...evaluate(s) }))
+                .filter((s) => showAll || s.status === 'match');
+        }
+
+        function sortStations(list) {
+            const val = (s) => sortKey.split('.').reduce((o, k) => o?.[k], s) ?? Infinity;
+            return list.sort((a, b) => (val(a) < val(b) ? -1 : val(a) > val(b) ? 1 : 0));
+        }
+
+        function render() {
+            const list = sortStations(visibleStations());
+            const matches = data.stations.filter((s) => evaluate(s).status === 'match').length;
+            document.getElementById('summary').textContent =
+                `${matches} station${matches === 1 ? '' : 's'} meet every limit` +
+                (document.getElementById('show-all').checked ? ` (showing all ${list.length})` : '');
+
+            stationsLayer.clearLayers();
+            markersById = {};
+            // Draw weaker matches first so matches sit on top
+            const order = { none: 0, partial: 1, match: 2 };
+            for (const s of [...list].sort((a, b) => order[a.status] - order[b.status])) {
+                const marker = L.circleMarker([s.lat, s.lon], {
+                    pane: 'stations',
+                    radius: s.status === 'match' ? 6 : 4,
+                    color: '#ffffff',
+                    weight: 1.5,
+                    fillColor: COLORS[s.status],
+                    fillOpacity: 1,
+                })
+                    .bindTooltip(`${escapeHtml(s.stop_name)} · peak ${fmtMins(s.peak.median_secs)}, every ${fmtMins(s.peak.headway_secs)}`, { direction: 'top', offset: [0, -4] })
+                    .bindPopup(() => popupHtml(s), { maxWidth: 320 });
+                marker.addTo(stationsLayer);
+                markersById[s.stop_id] = marker;
+            }
+
+            const cell = (secs, ok, split) =>
+                `<td class="num${split ? ' split' : ''}${ok === false ? ' fail' : ''}">${secs == null ? '—' : mins(secs)}</td>`;
+            document.getElementById('station-rows').innerHTML = list.map((s) => `
+                <tr data-id="${escapeHtml(s.stop_id)}">
+                    <td class="name" title="${escapeHtml(s.stop_name)}"><i class="dot" style="background:${COLORS[s.status]}"></i>${escapeHtml(s.stop_name.replace(/ Station$/, ''))}</td>
+                    ${PERIOD_KEYS.map((k) => cell(s[k].median_secs, s.checks[k].time, true) + cell(s[k].headway_secs, s.checks[k].every, false)).join('')}
+                </tr>`).join('');
+
+            renderWalk();
+        }
+
+        function setWalkStatus(text, isError = false) {
+            const el = document.getElementById('walk-status');
+            el.hidden = !text;
+            el.textContent = text || '';
+            el.style.color = isError ? '#DC2626' : '';
+        }
+
+        // Fetch the precomputed walking areas once; resolves to the stop_id -> Feature map
+        function loadWalkAreas() {
+            if (!walkLoading) {
+                setWalkStatus('Loading walking areas…');
+                walkLoading = fetch('/api/property-locator/isochrones').then(async (res) => {
+                    const body = await res.json();
+                    if (!res.ok) throw new Error(body.hint ? `${body.error} ${body.hint}` : body.error);
+                    walkAreas = Object.fromEntries(
+                        body.features
+                            .filter((f) => !f.properties.fallback_circle)  // outside the walking graph
+                            .map((f) => [f.properties.stop_id, f]),
+                    );
+                    return walkAreas;
+                }).catch((err) => {
+                    walkLoading = null;
+                    setWalkStatus(`Couldn't load walking areas: ${err.message}`, true);
+                    throw err;
+                });
+            }
+            return walkLoading;
+        }
+
+        function matchingWalkFeatures() {
+            return data.stations
+                .filter((s) => evaluate(s).status === 'match' && walkAreas[s.stop_id])
+                .map((s) => walkAreas[s.stop_id]);
+        }
+
+        function renderWalk() {
+            walkLayer.clearLayers();
+            if (!document.getElementById('show-walk').checked || !walkAreas) return;
+            const features = matchingWalkFeatures();
+            L.geoJSON({ type: 'FeatureCollection', features }, {
+                pane: 'walk',
+                style: { color: COLORS.match, weight: 1, opacity: 0.6, fillColor: COLORS.match, fillOpacity: 0.12 },
+                onEachFeature: (f, layer) => layer.bindTooltip(`15-min walk from ${escapeHtml(f.properties.name)}`, { sticky: true }),
+            }).addTo(walkLayer);
+            setWalkStatus(`Walking areas shown for ${features.length} matching stations (15 min at 1.4 m/s).`);
+        }
+
+        function exportRows() {
+            return sortStations(visibleStations()).map((s) => {
+                const row = { stop_id: s.stop_id, station: s.stop_name, lat: s.lat, lon: s.lon, lines: s.lines.join(' ') };
+                for (const k of PERIOD_KEYS) {
+                    const p = s[k];
+                    Object.assign(row, {
+                        [`${k}_median_min`]: mins(p.median_secs),
+                        [`${k}_fastest_min`]: mins(p.min_secs),
+                        [`${k}_slowest_min`]: mins(p.max_secs),
+                        [`${k}_trains`]: p.journeys,
+                        [`${k}_every_min`]: mins(p.headway_secs),
+                        [`${k}_longest_gap_min`]: mins(p.max_headway_secs),
+                        [`meets_${k}_time`]: s.checks[k].time,
+                        [`meets_${k}_frequency`]: s.checks[k].every,
+                    });
+                }
+                row.meets_all = s.status === 'match';
+                return row;
+            });
+        }
+
+        function download(filename, text, type) {
+            const url = URL.createObjectURL(new Blob([text], { type }));
+            const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        }
+
+        function fileStem() {
+            const lim = limits();
+            const part = (k) => `${k}${lim[k].time == null ? 'any' : lim[k].time / 60}every${lim[k].every == null ? 'any' : lim[k].every / 60}`;
+            return `property_locator_${data.date}_${PERIOD_KEYS.map(part).join('_')}`;
+        }
+
+        document.getElementById('btn-csv').addEventListener('click', () => {
+            const rows = exportRows();
+            const cols = Object.keys(rows[0] || { station: '' });
+            const cell = (v) => (v == null ? '' : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+            const csv = [cols.join(','), ...rows.map((r) => cols.map((c) => cell(r[c])).join(','))].join('\n');
+            download(`${fileStem()}.csv`, csv, 'text/csv');
+        });
+
+        document.getElementById('btn-json').addEventListener('click', () => {
+            const lim = limits();
+            const payload = {
+                date: data.date,
+                periods: Object.fromEntries(PERIOD_KEYS.map((k) => [k, {
+                    ...data.periods[k],
+                    max_minutes: lim[k].time == null ? null : lim[k].time / 60,
+                    train_every_minutes: lim[k].every == null ? null : lim[k].every / 60,
+                }])),
+                stations: exportRows(),
+            };
+            download(`${fileStem()}.json`, JSON.stringify(payload, null, 2), 'application/json');
+        });
+
+        document.getElementById('station-rows').addEventListener('click', (e) => {
+            const row = e.target.closest('tr');
+            if (!row) return;
+            const marker = markersById[row.dataset.id];
+            if (!marker) return;
+            map.flyTo(marker.getLatLng(), 14, { duration: 0.8 });
+            map.once('moveend', () => marker.openPopup());
+        });
+
+        document.getElementById('show-all').addEventListener('input', render);
+
+        document.getElementById('show-walk').addEventListener('input', async (e) => {
+            if (!e.target.checked) {
+                walkLayer.clearLayers();
+                setWalkStatus('');
+                return;
+            }
+            try {
+                await loadWalkAreas();
+                renderWalk();
+            } catch {
+                e.target.checked = false;
+            }
+        });
+
+        document.getElementById('btn-walk').addEventListener('click', async () => {
+            try {
+                await loadWalkAreas();
+            } catch {
+                return;
+            }
+            const payload = { type: 'FeatureCollection', features: matchingWalkFeatures() };
+            download(`${fileStem()}_walk15.geojson`, JSON.stringify(payload), 'application/geo+json');
+        });
+
+        async function load() {
+            const status = document.getElementById('status');
+            try {
+                const [res, netRes] = await Promise.all([fetch('/api/property-locator'), fetch('/api/rail-network')]);
+                const body = await res.json();
+                if (!res.ok) throw new Error(body.hint ? `${body.error} ${body.hint}` : body.error);
+                data = body;
+
+                const network = await netRes.json();
+                if (netRes.ok) {
+                    lineInfo = Object.fromEntries(network.lines.features.map((f) => [f.properties.line, f.properties]));
+                    L.geoJSON(network.lines, {
+                        pane: 'lines',
+                        style: (f) => ({ color: f.properties.color, weight: 3, opacity: 0.35 }),
+                    }).addTo(linesLayer);
+                }
+
+                document.getElementById('subtitle').textContent =
+                    `Median train time to Central on ${fmtDate(data.date)}, transfers allowed` +
+                    ` (in-station walk + ${data.transfer_buffer_secs} s buffer). "Every" is the effective gap between useful trains;` +
+                    ` waiting at the origin isn't counted in the time. Off-peak is the official Opal off-peak (outside both peaks), 5am–11pm only.` +
+                    (data.warning ? ` ${data.warning}` : '');
+
+                buildLimitInputs();
+                buildTableHead();
+                render();
+                status.hidden = true;
+                document.getElementById('controls').hidden = false;
+            } catch (err) {
+                status.className = 'error';
+                status.textContent = `Couldn't load travel times: ${err.message}`;
+            }
+        }
+
+        load();
+    </script>
+</body>
+</html>

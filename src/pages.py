@@ -5,6 +5,7 @@ Serves the browser UI (no URL prefix):
 - GET /               home page linking to every page and the JSON API
 - GET /map/transport  train and metro stations and lines (data from /api/rail-network)
 - GET /map/isochrone  isochrone explorer (data from /api/isochrone and /api/network)
+- GET /map/property-locator  temporary: stations within a peak/off-peak travel time of Central
 - GET /api/map        old isochrone URL, redirects to /map/isochrone
 """
 
@@ -26,6 +27,12 @@ def transport_map():
 @pages_bp.route("/map/isochrone", methods=["GET"])
 def isochrone_map():
     return render_template("isochrone_map.html")
+
+
+@pages_bp.route("/map/property-locator", methods=["GET"])
+def property_locator():
+    """Temporary single-purpose page; see api/property_locator.py."""
+    return render_template("property_locator.html")
 
 
 @pages_bp.route("/api/map", methods=["GET"])

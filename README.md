@@ -52,7 +52,7 @@ export TRANSPORT_NSW_API_KEY="your-api-key-here"
 
 ### 4. (Optional) Get the walking graph for isochrones
 
-The isochrone endpoints need `data/osmnx/sydney_walk.graphml` (~530 MB). It is stored in Git LFS and **excluded from the default fetch** (see `.lfsconfig`) so that clones stay fast. Either pull it:
+The isochrone endpoints need `data/osmnx/sydney_walk.graphml` (~565 MB). It is stored in Git LFS and **excluded from the default fetch** (see `.lfsconfig`) so that clones stay fast. Either pull it:
 
 ```bash
 git lfs pull --include="data/osmnx/sydney_walk.graphml" --exclude=""

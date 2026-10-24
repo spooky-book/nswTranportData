@@ -32,7 +32,7 @@ uv run python src/app.py                  # dev server on http://localhost:5000 
 uv run ruff check <files>                 # lint (ruff defaults; no config file)
 uv run ruff format <files>                # format
 uv add <pkg> / uv remove <pkg>            # manage dependencies
-git lfs pull --exclude=                   # fetch data/osmnx/sydney_walk.graphml (~530 MB)
+git lfs pull --exclude=                   # fetch data/osmnx/sydney_walk.graphml (~565 MB)
 uv run python scripts/download_graph.py   # ...or rebuild that graph from Overpass (slow)
 ```
 
@@ -50,7 +50,7 @@ uv run python scripts/download_graph.py   # ...or rebuild that graph from Overpa
   200060 is Central and 215020 is Parramatta. Each endpoint's docstring documents its full request and response JSON.
 - `app.run(debug=True)` restarts the server whenever a `.py` file changes, which throws away the
   in-memory feed and graph caches. Expect the next GTFS request (download + parse) and the next
-  isochrone request (~530 MB graph load) to be slow and memory-heavy.
+  isochrone request (~565 MB graph load) to be slow and memory-heavy.
 
 ---
 
@@ -93,7 +93,7 @@ nswTranportData/
 │
 ├── data/                         # Mostly git-ignored (see .gitignore)
 │   ├── schedule-gtfs/<YYYY-MM-DD>/<cache_folder>/gtfs_schedule.zip   # GTFS cache (ignored)
-│   └── osmnx/sydney_walk.graphml # ~530 MB walking graph, tracked with Git LFS
+│   └── osmnx/sydney_walk.graphml # ~565 MB walking graph, tracked with Git LFS
 │
 ├── maps/gtfs_shapes_sydneyTrains.html   # Legacy Folium output (see §12)
 ├── *.geojson                     # Committed outputs of the isochrone scripts

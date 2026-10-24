@@ -10,9 +10,22 @@ Request body (JSON, origin and destination required):
     "origin_stop_id": "200060",       // parent station ID for origin
     "destination_stop_id": "215020",  // parent station ID for destination
     "dates": ["20260523"],            // YYYYMMDD list; default: today or first feed date
+    "period": "all",                  // named departure window (see PERIODS); default "all"
     "time_window_start": "00:00:00",  // filter all stats to trips departing after this time
     "time_window_end":   "29:59:59"   // filter all stats to trips departing before this time
 }
+
+Give either "period" or the time_window fields, not both. Periods filter on departure time
+from the origin (like Opal, which charges by tap-on time):
+    all            00:00:00–29:59:59  (default)
+    early_morning  00:00:00–06:29:59
+    am_peak        06:30:00–09:59:59  (Opal peak for trains and metro)
+    interpeak      10:00:00–14:59:59  (convention; not officially defined)
+    pm_peak        15:00:00–18:59:59  (Opal peak)
+    evening        19:00:00–21:59:59
+    late_night     22:00:00–29:59:59
+They are times of day only: Opal peak fares apply Monday to Thursday, but a period
+filters every requested date the same way. Intercity Opal peak starts at 06:00.
 
 Response body (JSON):
 {
@@ -23,6 +36,7 @@ Response body (JSON):
     "destination_name": "Parramatta Station",
     "dates_used": ["20260523"],
     "warning": null,
+    "period": "all",                  // null when a custom time window was given
     "time_window": {"start": "00:00:00", "end": "29:59:59"},
     "dates": [
         {
@@ -70,6 +84,18 @@ trip_stats_bp = Blueprint("trip_stats", __name__, url_prefix="/api")
 
 _DEFAULT_WINDOW_START = "00:00:00"
 _DEFAULT_WINDOW_END = "29:59:59"
+
+# Named departure windows (inclusive). Peaks match the Opal train/metro peak times;
+# interpeak, evening and late_night follow the service levels in the timetable.
+PERIODS: dict[str, tuple[str, str]] = {
+    "all": (_DEFAULT_WINDOW_START, _DEFAULT_WINDOW_END),
+    "early_morning": ("00:00:00", "06:29:59"),
+    "am_peak": ("06:30:00", "09:59:59"),
+    "interpeak": ("10:00:00", "14:59:59"),
+    "pm_peak": ("15:00:00", "18:59:59"),
+    "evening": ("19:00:00", "21:59:59"),
+    "late_night": ("22:00:00", _DEFAULT_WINDOW_END),
+}
 
 
 def _time_to_seconds(t: str) -> int:
@@ -126,9 +152,30 @@ def get_trip_stats():
                 return jsonify({"error": err}), 400
         requested_dates = raw_dates
 
-    # ── Parse & validate time window ───────────────────────────────────────
-    window_start = body.get("time_window_start", _DEFAULT_WINDOW_START)
-    window_end = body.get("time_window_end", _DEFAULT_WINDOW_END)
+    # ── Parse & validate period / time window ──────────────────────────────
+    has_window = "time_window_start" in body or "time_window_end" in body
+    period = body.get("period")
+
+    if period is not None:
+        if has_window:
+            return jsonify(
+                {
+                    "error": "Give either 'period' or 'time_window_start'/'time_window_end', not both.",
+                    "hint": f"Valid periods: {', '.join(PERIODS)}.",
+                }
+            ), 400
+        if not isinstance(period, str) or period not in PERIODS:
+            return jsonify(
+                {
+                    "error": f"Unknown period {period!r}.",
+                    "hint": f"Valid periods: {', '.join(PERIODS)}.",
+                }
+            ), 400
+        window_start, window_end = PERIODS[period]
+    else:
+        period = None if has_window else "all"
+        window_start = body.get("time_window_start", _DEFAULT_WINDOW_START)
+        window_end = body.get("time_window_end", _DEFAULT_WINDOW_END)
 
     if not isinstance(window_start, str) or not isinstance(window_end, str):
         return jsonify({"error": "Time window values must be strings (HH:MM:SS)."}), 400
@@ -369,6 +416,7 @@ def get_trip_stats():
             "destination_name": dest_name,
             "dates_used": dates_to_use,
             "warning": date_warning,
+            "period": period,
             "time_window": {"start": window_start, "end": window_end},
             "dates": date_records,
         }

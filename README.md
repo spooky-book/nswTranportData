@@ -92,7 +92,7 @@ The server starts at [http://localhost:5000](http://localhost:5000) (override wi
 | `GET /api/stations` | List stations (`location_type = 1`) for a mode; falls back to platforms for feeds without stations. Query params: `mode`, `search` |
 | `GET /api/stops` | List any GTFS stop type. Query params: `mode`, `search`, `location_type` (0–4) |
 | `POST /api/stop-stats` | Daily service statistics per station, aggregated across child platforms |
-| `POST /api/trip-stats` | Direct (no-transfer) service stats between two stations: trip counts, headways, travel times |
+| `POST /api/trip-stats` | Direct (no-transfer) service stats between two stations: trip counts, headways, travel times. Filter by `period` (`all` (default), `early_morning`, `am_peak`, `interpeak`, `pm_peak`, `evening`, `late_night`) or a custom time window |
 | `POST /api/trips` | Journey planner between two stations, including transfers |
 | `POST /api/isochrone` | Walking/cycling reachability polygon (GeoJSON) — requires the walking graph |
 | `GET /api/network?lat=&lon=` | Debug endpoint: walkable street edges within ~1.5 km of a point, as GeoJSON |
@@ -111,6 +111,11 @@ curl -X POST http://localhost:5000/api/trip-stats \
   -H "Content-Type: application/json" \
   -d '{"origin_stop_id": "200060", "destination_stop_id": "215020",
        "time_window_start": "07:00:00", "time_window_end": "19:00:00"}'
+
+# Same, morning peak only (06:30–10:00, the Opal peak window)
+curl -X POST http://localhost:5000/api/trip-stats \
+  -H "Content-Type: application/json" \
+  -d '{"origin_stop_id": "200060", "destination_stop_id": "215020", "period": "am_peak"}'
 
 # Journeys (with transfers) across trains + metro
 curl -X POST http://localhost:5000/api/trips \

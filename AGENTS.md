@@ -199,7 +199,12 @@ nswTranportData/
 ### 4.9 `src/api/trip_stats.py`: `POST /api/trip-stats`
 
 - Direct (single-trip, no transfer) stats between `origin_stop_id` and `destination_stop_id` (parent station IDs).
-- Optional: `mode`, `dates`, `time_window_start` / `time_window_end` (default `00:00:00` to `29:59:59`, filtered on departure).
+- Optional: `mode`, `dates`, and either `period` or `time_window_start` / `time_window_end` (both filter on departure
+  from the origin; giving both is a 400). Default is `period: "all"` = `00:00:00` to `29:59:59`.
+- `PERIODS` (in `trip_stats.py`, inclusive ends): `all`, `early_morning` 00:00–06:29:59, `am_peak` 06:30–09:59:59,
+  `interpeak` 10:00–14:59:59, `pm_peak` 15:00–18:59:59, `evening` 19:00–21:59:59, `late_night` 22:00–29:59:59.
+  Peaks match the Opal train/metro peak times; the rest follow timetable service levels. They are times of day only
+  (the Opal Mon–Thu rule isn't applied). The response echoes `period` (null for a custom window).
 - Per date: `num_trips`, `num_routes`, `start_time`, `end_time`, `min/mean/median/mode/max_headway_secs`,
   `travel_time_min/mean/median/mode/max_secs`, and a `trips` list.
 - When a trip calls at the origin or destination more than once (City Circle trains at Central), only the shortest

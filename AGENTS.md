@@ -265,6 +265,10 @@ nswTranportData/
   - `low`: convex hull of the reachable nodes.
   - With fewer than 3 points it returns a buffered circle and sets `fallback_circle: true`.
   Returns `{lat, lon, speed, max_duration_minutes, resolution, isochrone: <GeoJSON Polygon>, ...}`.
+- The graph is bidirectional (every edge has a reverse; `oneway` is False everywhere). Rebuilds must keep
+  `network_type="walk"` in `download_graph.py`, or run `scripts/make_walk_graph_bidirectional.py` afterwards.
+- Every `crossing` node adds 10 s even when walking straight along a road past it (65,868 such nodes), which likely
+  makes isochrones noticeably smaller than a real walk in dense areas; not yet measured or tuned.
 - **Hidden dependency:** `scikit-learn` is never imported directly, but `osmnx.distance.nearest_nodes`
   needs it for this unprojected graph.
 - The UI is `GET /map/isochrone` (served by `pages.py`), `templates/isochrone_map.html`, a single file with inline JS
@@ -321,7 +325,8 @@ Configuration is hard-coded as constants at the top of each file.
 
 | Script | What it does |
 |---|---|
-| `download_graph.py` | `ox.graph_from_place("Sydney, NSW")` with a custom Overpass filter that is more permissive than OSMnx's `walk` network. It keeps footpaths, shared paths, cycleways and bridges, and excludes motorways, trunks, platforms, private access and `foot=no`. Writes `data/osmnx/sydney_walk.graphml`. osmnx caches Overpass responses in `./cache/` (git-ignored). |
+| `make_walk_graph_bidirectional.py` | One-off fix, already applied to the LFS graph (2026-10-24): streams `sydney_walk.graphml` and adds a reverse copy of every edge with no reverse (76,416 one-way edges), setting `oneway=False`, so pedestrians can walk against one-way traffic. Low RAM, ~15 s; a no-op on an already-bidirectional graph. |
+| `download_graph.py` | `ox.graph_from_place("Sydney, NSW", network_type="walk")` (bidirectional, so one-way streets are walkable both ways) with a custom Overpass filter that is more permissive than OSMnx's `walk` network. It keeps footpaths, shared paths, cycleways and bridges, and excludes motorways, trunks, platforms, private access and `foot=no`. Writes `data/osmnx/sydney_walk.graphml`. osmnx caches Overpass responses in `./cache/` (git-ignored). |
 | `generate_station_isochrones.py` | Isochrones for a hard-coded `STATIONS_INPUT` list (`stop_id, name, mode`). Writes `station_isochrones.geojson`. |
 | `generate_supermarket_isochrones.py` | Uses OSM to find Coles, Woolworths and Aldi stores, then builds an isochrone for each. Writes `supermarket_isochrones.geojson`. |
 | `all_to_central.py` | Stats from every `sydney_trains` and `sydney_metro` station to Central (`200060`). Writes `stats_to_destination_*.csv`. **Currently broken** (see §11). |

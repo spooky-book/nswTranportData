@@ -32,8 +32,13 @@ def main():
 
     try:
         # Use a bounding box or place name. Place name is easier.
-        # We also simplify the graph to reduce size and speed up routing
-        G = ox.graph_from_place(place_name, custom_filter=custom_filter, simplify=True)
+        # We also simplify the graph to reduce size and speed up routing.
+        # network_type="walk" makes OSMnx add a reverse edge for every one-way street;
+        # without it pedestrians can't walk against traffic. (custom_filter still
+        # decides which ways are included.)
+        G = ox.graph_from_place(
+            place_name, network_type="walk", custom_filter=custom_filter, simplify=True
+        )
         print(
             f"Graph downloaded successfully: {len(G.nodes)} nodes, {len(G.edges)} edges."
         )

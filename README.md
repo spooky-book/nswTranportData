@@ -156,6 +156,7 @@ Scripts live in `scripts/` and are run from the project root. All except `downlo
 
 | Script | Purpose | Output |
 |---|---|---|
+| `make_walk_graph_bidirectional.py` | One-off fix (already applied): makes one-way streets walkable in both directions in the existing walking graph | `data/osmnx/sydney_walk.graphml` (in place) |
 | `download_graph.py` | Downloads the Sydney walking network from OpenStreetMap | `data/osmnx/sydney_walk.graphml` |
 | `generate_station_isochrones.py` | Isochrones for a hard-coded list of stations | `station_isochrones.geojson` |
 | `generate_supermarket_isochrones.py` | Finds Coles/Woolworths/Aldi stores via OSM and builds isochrones for each | `supermarket_isochrones.geojson` |

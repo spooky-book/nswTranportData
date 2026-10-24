@@ -187,7 +187,9 @@ nswTranportData/
 - Body (all optional): `mode`, `dates` (YYYYMMDD list), `stop_ids` (parent station IDs),
   `headway_start_time`, `headway_end_time` (defaults `07:00:00` to `19:00:00`).
 - Resolves station → child platforms → `feed.compute_stop_stats()` → aggregates back to the station
-  (`num_trips` summed, `num_routes` unique, earliest `start_time`, latest `end_time`; headways omitted).
+  (`num_trips` = distinct trips calling at any platform that date, `num_routes` unique route_ids, earliest `start_time`,
+  latest `end_time`; headways omitted). Count trips, don't sum per-platform counts: City Circle trains call at
+  Central twice (once before the loop, once after).
 - **Shared helpers imported by other blueprints:** `_validate_date`, `_validate_time`, `_resolve_dates`.
   A change to one of them affects several endpoints.
   - `_resolve_dates` drops requested dates outside the feed's range and explains why in the response's
@@ -200,6 +202,8 @@ nswTranportData/
 - Optional: `mode`, `dates`, `time_window_start` / `time_window_end` (default `00:00:00` to `29:59:59`, filtered on departure).
 - Per date: `num_trips`, `num_routes`, `start_time`, `end_time`, `min/mean/median/mode/max_headway_secs`,
   `travel_time_min/mean/median/mode/max_secs`, and a `trips` list.
+- When a trip calls at the origin or destination more than once (City Circle trains at Central), only the shortest
+  ride is kept: the first destination call after each origin call, then the last origin call before each destination call.
 - Exports `_time_to_seconds` (used by `trips.py`).
 
 ### 4.10 `src/api/trips.py`: `POST /api/trips`

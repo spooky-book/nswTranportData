@@ -222,7 +222,18 @@ def get_trip_stats():
     # Merge A and B on trip_id
     # A trip must serve A and then B
     merged = pd.merge(st_A, st_B, on="trip_id")
-    direct = merged[merged["seq_B"] > merged["seq_A"]].copy()
+    direct = merged[merged["seq_B"] > merged["seq_A"]]
+
+    # A trip can call at a station twice (City Circle trains pass Central before
+    # and after the loop), which pairs one ride with several A/B combinations.
+    # Keep the shortest ride: the first B after each A, then the last A before each B.
+    direct = (
+        direct.sort_values("seq_B")
+        .drop_duplicates(["trip_id", "seq_A"], keep="first")
+        .sort_values("seq_A")
+        .drop_duplicates(["trip_id", "seq_B"], keep="last")
+        .copy()
+    )
 
     # Join route info
     tr = feed.trips[["trip_id", "route_id"]]

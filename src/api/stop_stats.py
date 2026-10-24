@@ -9,7 +9,7 @@ Key design:
 - For each station, child platform IDs are looked up and stats are computed
   at the platform level, then aggregated back up to the station level.
 - Default (no stop_ids): all parent stations in the feed.
-- num_trips  → sum across platforms
+- num_trips  → distinct trips calling at any platform (a trip calling twice counts once)
 - num_routes → unique count across platforms
 - headways   → omitted at station level (ambiguous when platforms differ)
 - start_time → earliest platform first departure
@@ -143,15 +143,21 @@ def _aggregate_platform_stats(
     date: str,
     platform_ids: list[str],
     route_id_by_platform: dict[str, set[str]],
+    station_trip_ids: set[str],
+    active_trip_ids: set[str],
 ) -> dict:
     """
     Aggregate per-platform stats for a single date into a single station-level record.
 
-    platform_stats: rows from compute_stop_stats filtered to this date.
+    platform_stats: compute_stop_stats output for all requested dates.
     platform_ids: all platform IDs belonging to this station.
     route_id_by_platform: mapping from stop_id → set of route_ids (from stop_times/trips join).
+    station_trip_ids: every trip that calls at any of this station's platforms (any date).
+    active_trip_ids: trips running on this date.
     """
     rows = platform_stats[platform_stats["stop_id"].isin(platform_ids)]
+    if "date" in rows.columns:
+        rows = rows[rows["date"] == date]
 
     if rows.empty:
         return {
@@ -162,8 +168,9 @@ def _aggregate_platform_stats(
             "end_time": None,
         }
 
-    # num_trips: sum across all platforms
-    num_trips = int(rows["num_trips"].sum()) if "num_trips" in rows.columns else 0
+    # num_trips: distinct trips calling at the station. Summing per-platform counts
+    # double-counts trips that call twice (City Circle trains pass Central twice).
+    num_trips = len(station_trip_ids & active_trip_ids)
 
     # num_routes: unique routes across all platforms
     all_routes: set[str] = set()
@@ -232,7 +239,7 @@ def get_stop_stats():
                 "dates": [
                     {
                         "date":       "20260523",
-                        "num_trips":  1850,      // sum across all platforms
+                        "num_trips":  1850,      // distinct trips calling at any platform
                         "num_routes": 12,         // unique routes across platforms
                         "start_time": "04:03:00", // earliest first departure
                         "end_time":   "26:10:01"  // latest last departure (may exceed 24h)
@@ -439,9 +446,21 @@ def get_stop_stats():
     st_routes = st_routes[st_routes["stop_id"].isin(all_platform_ids)]
 
     route_id_by_platform: dict[str, set[str]] = {}
+    trip_ids_by_platform: dict[str, set[str]] = {}
     for pid, grp in st_routes.groupby("stop_id"):
         route_id_by_platform[str(pid)] = set(
             grp["route_id"].dropna().astype(str).unique()
+        )
+        trip_ids_by_platform[str(pid)] = set(grp["trip_id"].dropna().astype(str))
+
+    # Trips running on each requested date
+    active_trips_by_date: dict[str, set[str]] = {}
+    for date in dates_to_use:
+        active = feed.get_trips(date)
+        active_trips_by_date[date] = (
+            set(active["trip_id"].dropna().astype(str))
+            if active is not None and not active.empty
+            else set()
         )
 
     # ── Run compute_stop_stats at platform level ───────────────────────────
@@ -478,11 +497,19 @@ def get_stop_stats():
     for _, station_row in target_stations.sort_values("stop_name").iterrows():
         sid = station_row["stop_id"]
         platform_ids = station_to_platforms.get(str(sid), [])
+        station_trip_ids: set[str] = set()
+        for pid in platform_ids:
+            station_trip_ids |= trip_ids_by_platform.get(pid, set())
 
         date_records: list[dict] = []
         for date in dates_to_use:
             date_agg = _aggregate_platform_stats(
-                stats_df, date, platform_ids, route_id_by_platform
+                stats_df,
+                date,
+                platform_ids,
+                route_id_by_platform,
+                station_trip_ids,
+                active_trips_by_date[date],
             )
             date_records.append(date_agg)
 

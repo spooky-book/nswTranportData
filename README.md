@@ -9,7 +9,7 @@ A Python/Flask application that consumes [GTFS (General Transit Feed Specificati
 - **Journey Planner** — Timetable-based routing between two stations, including transfers (`/api/trips`).
 - **Transport Map** — Every Sydney Trains, Sydney Metro and NSW TrainLink (intercity and regional) station and line on one map, with per-network toggles, station search and a popup listing each station's lines.
 - **Isochrone Explorer** — Walking/cycling reachability polygons computed on a local OpenStreetMap street graph, with an interactive Leaflet UI for generating, importing/exporting, and merging/intersecting isochrone layers.
-- **Supermarkets** — Coles, Woolworths, Aldi and Foodworks stores around Sydney (Coles Local, Woolworths Metro and Foodworks marked as not full supermarkets), with a precomputed 10-minute walking area around each.
+- **Supermarkets** — Coles, Woolworths, Aldi, Foodworks and IGA stores around Sydney (Coles Local, Woolworths Metro, Foodworks and most IGA formats marked as not full supermarkets; IGA split into Romeo's, Supa IGA, IGA and IGA Local Grocer/Xpress), with a precomputed 10-minute walking area around each.
 - **Multi-mode Support** — Sydney Trains, Sydney Metro, NSW TrainLink, four light rail networks and two ferry operators, plus a combined trains + metro mode.
 - **Smart Caching** — GTFS zips are downloaded once per (Sydney) day and cached on disk; parsed feeds are cached in memory.
 - **Batch Scripts** — Scripts that call the running API to generate GeoJSON isochrone layers and CSV travel-time reports.
@@ -99,7 +99,7 @@ The server starts at [http://localhost:5000](http://localhost:5000) (override wi
 | `POST /api/isochrone` | Walking/cycling reachability polygon (GeoJSON) — requires the walking graph. Returns 404 if the point is more than 300 m from the walking network (the graph covers the Sydney area only) |
 | `GET /api/network?lat=&lon=` | Debug endpoint: walkable street edges within ~1.5 km of a point, as GeoJSON |
 | `GET /api/rail-network` | Train and metro stations with the lines serving each, plus line geometry as GeoJSON (powers the Transport Map) |
-| `GET /api/supermarkets` | Coles, Woolworths, Aldi and Foodworks stores around Sydney as GeoJSON, with Coles Local, Woolworths Metro and Foodworks flagged as not full supermarkets (`full_store: false`); `?full_store=true` or `false` filters. Needs `scripts/download_supermarkets.py` run first |
+| `GET /api/supermarkets` | Coles, Woolworths, Aldi, Foodworks and IGA stores around Sydney as GeoJSON, with Coles Local, Woolworths Metro, Foodworks, IGA and IGA Local Grocer/Xpress flagged as not full supermarkets (`full_store: false`); `?full_store=true` or `false` filters. Needs `scripts/download_supermarkets.py` run first |
 | `GET /api/supermarkets/isochrones` | Precomputed 10-min walking area (1.4 m/s) around each store, as GeoJSON; ids match `/api/supermarkets`. Needs `scripts/generate_supermarket_walk_areas.py` run first |
 
 Full request/response schemas are documented in each blueprint's module docstring under `src/api/`.
@@ -165,7 +165,7 @@ Scripts live in `scripts/` and are run from the project root. `generate_station_
 | `generate_supermarket_isochrones.py` | Finds Coles/Woolworths/Aldi stores via OSM and builds isochrones for each | `supermarket_isochrones.geojson` |
 | `all_to_central.py` | Travel-time and headway stats from every station to Central | `stats_to_destination_<id>_date_<date>_time_window_<start>-<end>.csv` |
 | `generate_property_isochrones.py` | *Temporary.* 15-min walking isochrones around every train/metro station for the Desirable Property Locator (server must be running; loads the walking graph itself; ~2 min plus a ~1 min graph load, resumable) | `data/property_locator/station_isochrones_15min_walk.geojson` |
-| `download_supermarkets.py` | Downloads Coles, Woolworths, Aldi and Foodworks store locations around Sydney from [AllThePlaces](https://www.alltheplaces.xyz/) (scraped from each store locator), marking Coles Local and Woolworths Metro as small formats. Foodworks' locator has no coordinates, so its addresses are geocoded with NSW Spatial Services address points (CC BY 4.0), falling back to OpenStreetMap Nominatim. No server or API key needed | `data/supermarkets/supermarkets.geojson` |
+| `download_supermarkets.py` | Downloads Coles, Woolworths, Aldi, Foodworks and IGA store locations around Sydney from [AllThePlaces](https://www.alltheplaces.xyz/) (scraped from each store locator), marking Coles Local and Woolworths Metro as small formats and splitting IGA by format. Foodworks' and IGA's locators have no coordinates, so their addresses are geocoded with NSW Spatial Services address points (CC BY 4.0), falling back to OpenStreetMap Nominatim. No server or API key needed | `data/supermarkets/supermarkets.geojson` |
 | `generate_supermarket_walk_areas.py` | 10-min walking area around every store from `download_supermarkets.py` (loads the walking graph itself; no server needed; ~3 min plus a ~1 min graph load, resumable) | `data/supermarkets/supermarket_isochrones_10min_walk.geojson` |
 | `download_pathways.py` | Downloads TfNSW's in-station walking paths (from the ~300 MB complete GTFS bundle) for realistic journey-planner transfer times. `--from-zip PATH` reuses a bundle you already have | `data/pathways/<date>/pathways.txt` |
 
@@ -198,7 +198,7 @@ nswTranportData/
 │   │   ├── isochrone.py     # POST /api/isochrone, GET /api/network
 │   │   ├── rail_network.py  # GET  /api/rail-network (stations + line geometry)
 │   │   ├── property_locator.py # GET /api/property-locator (temporary)
-│   │   └── supermarkets.py  # GET  /api/supermarkets (Coles/Woolworths/Aldi/Foodworks locations)
+│   │   └── supermarkets.py  # GET  /api/supermarkets (Coles/Woolworths/Aldi/Foodworks/IGA locations)
 │   ├── gtfs/
 │   │   ├── downloader.py    # Downloads & caches GTFS zips per day
 │   │   ├── loader.py        # Loads/normalises/filters feeds into gtfs_kit.Feed (in-memory cache)

@@ -601,7 +601,7 @@
         const stationsLayer = L.layerGroup().addTo(map);
 
         // Supermarkets from /api/supermarkets; Coles Local, Woolworths Metro and Foodworks aren't
-        // full supermarkets (drawn as white squares with a dashed border)
+        // full supermarkets (drawn as white squares with a dashed border), and nor are most IGAs
         const SHOP_STYLE = {
             coles: { color: '#E01A22', letter: 'C' },
             coles_local: { color: '#E01A22', letter: 'C' },
@@ -609,6 +609,10 @@
             woolworths_metro: { color: '#178841', letter: 'W' },
             aldi: { color: '#1E3A8A', letter: 'A' },
             foodworks: { color: '#EA580C', letter: 'F' },
+            romeos_iga: { color: '#0891B2', letter: 'R' },
+            supa_iga: { color: '#DB2777', letter: 'I' },
+            iga: { color: '#DB2777', letter: 'I' },
+            iga_local: { color: '#DB2777', letter: 'i' },  // lower-case i: the smallest IGA formats
         };
         let shops = null;
         // store id -> precomputed 10-min walking isochrone Feature (null until loaded)
@@ -919,8 +923,9 @@
         const shopKind = (p) => shopNote(p).split(':')[0].toLowerCase();
 
         function shopPopupHtml(p) {
+            const note = shops.metadata.store_types[p.store_type].note;
             const tag = p.full_store
-                ? '<span class="tag">Full supermarket</span>'
+                ? `<span class="tag">${escapeHtml(note || 'Full supermarket')}</span>`
                 : `<span class="tag small">${escapeHtml(shopNote(p))}</span>`;
             const approx = p.location_accuracy === 'street'
                 ? '<p class="muted">Location approximate: only the street could be found.</p>' : '';
@@ -936,7 +941,7 @@
 
         const shopsSourceNote = () =>
             `From each chain's store locator via AllThePlaces (${shops.metadata.alltheplaces_run.slice(0, 10)}); ` +
-            'Foodworks located from their addresses.';
+            'Foodworks and IGA located from their addresses.';
 
         function setShopsStatus(text, isError = false) {
             const el = document.getElementById('shops-status');

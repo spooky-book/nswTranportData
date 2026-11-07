@@ -1,5 +1,5 @@
 """
-Download Coles, Woolworths, Aldi and Foodworks store locations around Sydney.
+Download Coles, Woolworths, Aldi, Foodworks and IGA store locations around Sydney.
 
 Source: AllThePlaces (https://www.alltheplaces.xyz/, CC0), which scrapes each
 retailer's own store locator weekly, so it is more complete than OpenStreetMap
@@ -11,9 +11,12 @@ Small formats carry a narrower range, usually at higher prices, so they are
 marked separately from full supermarkets. Woolworths' online-order fulfilment
 centres ("CFC") and Foodworks bottle shops are dropped because they aren't
 grocery shops. Foodworks is an independent (Metcash-supplied) chain of mostly
-small neighbourhood stores, so it is marked as not a full supermarket.
+small neighbourhood stores, so it is marked as not a full supermarket. IGA stores
+are also independent and are split by format from their names: Romeo's IGA
+(premium food halls) and Supa IGA are full-range; plain IGA varies in size; IGA
+Local Grocer and IGA Xpress are convenience-sized.
 
-Foodworks' store locator gives addresses but no coordinates, so those stores are
+Foodworks' and IGA's store locators give addresses but no coordinates, so those stores are
 geocoded (see geocode()): first against NSW address points (NSW Spatial Services
 Geocoded Addressing Theme, CC BY 4.0, built from G-NAF), then OpenStreetMap's
 Nominatim for the few that don't match. Each store records how it was located in
@@ -50,7 +53,7 @@ LATEST_RUN_URL = "https://data.alltheplaces.xyz/runs/latest.json"
 RUN_BASE_URL = (
     "https://alltheplaces-data.openaddresses.io/runs/{run_id}/output/{spider}.geojson"
 )
-SPIDERS = ["coles_au", "woolworths_au", "aldi_sud_au", "foodworks_au"]
+SPIDERS = ["coles_au", "woolworths_au", "aldi_sud_au", "foodworks_au", "iga_au"]
 
 NSW_ADDRESS_URL = (
     "https://portal.spatial.nsw.gov.au/server/rest/services/"
@@ -58,6 +61,15 @@ NSW_ADDRESS_URL = (
 )
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "nswTransportData/1.0 (personal research script)"
+
+# Store-locator addresses with street-name typos, corrected after checking the
+# right spelling exists in the NSW address points (2026-11-07)
+ADDRESS_FIXES = {
+    "101 Carldarra Ave, Engadine, 2233, NSW": "101 Caldarra Avenue, Engadine, 2233, NSW",
+    "Cnr Jacob Street & The Mall, Bankstown, 2200, NSW": (
+        "Cnr Jacobs Street & The Mall, Bankstown, 2200, NSW"
+    ),
+}
 
 NOT_A_SHOP = re.compile(r"\bCFC\b|fulfilment|bottle shop|\bliquor$", re.IGNORECASE)
 
@@ -86,6 +98,31 @@ STORE_TYPES = {
         "label": "Foodworks",
         "full_store": False,
         "note": "Independent grocer: mostly small stores, usually pricier",
+    },
+    # IGA stores are independently owned (Metcash-supplied) and come in several formats
+    "romeos_iga": {
+        "chain": "IGA",
+        "label": "Romeo's IGA",
+        "full_store": True,
+        "note": "Premium food hall: full range, pricier",
+    },
+    "supa_iga": {
+        "chain": "IGA",
+        "label": "Supa IGA",
+        "full_store": True,
+        "note": "Large IGA: full range, usually pricier than Coles/Woolworths",
+    },
+    "iga": {
+        "chain": "IGA",
+        "label": "IGA",
+        "full_store": False,
+        "note": "Independent supermarket: size varies, usually pricier",
+    },
+    "iga_local": {
+        "chain": "IGA",
+        "label": "IGA Local Grocer / Xpress",
+        "full_store": False,
+        "note": "Small format: convenience-sized, usually pricier",
     },
 }
 
@@ -132,11 +169,29 @@ def classify(props: dict) -> str | None:
         return "aldi"
     if brand == "Foodworks":
         return "foodworks"
+    if brand == "IGA":
+        # The IGA locator also lists a few other Metcash banners (Supamart, Supa Valu, ...);
+        # they're mid-size independents, so they count as plain IGA
+        name = (props.get("name") or "").upper()
+        if "ROMEO" in name:
+            return "romeos_iga"
+        if "SUPA IGA" in name:
+            return "supa_iga"
+        if re.search(r"IGA (LOCAL GROCER|X-?PRESS)", name):
+            return "iga_local"
+        return "iga"
     return None
 
 
 def display_name(label: str, props: dict) -> str:
     """e.g. "Coles Local Chatswood", "Woolworths Metro Pitt St", "Aldi Auburn"."""
+    if not props.get("branch") and props.get("brand") == "IGA":
+        # IGA gives each store's own name ("Ritchies IGA Wauchope", "IGA PUTNEY + LIQUOR");
+        # drop the liquor suffix and repair apostrophes that arrive as U+FFFD
+        name = re.sub(
+            r"\s*(\+|\bplus)\s*liquor\b", "", props.get("name") or "", flags=re.I
+        )
+        return name.replace("\ufffd", "'").strip() or label
     branch = (props.get("branch") or props.get("addr:city") or "").strip()
     if branch.lower().startswith(label.lower()):
         return branch
@@ -156,13 +211,19 @@ UNIT_PREFIX = re.compile(
 
 def parse_nsw_address(full: str) -> dict | None:
     """
-    Split e.g. "Shop 5 172 New England HWY, ABERDEEN NSW 2336" into
-    {"number": "172", "number_full": "172", "street": "NEW ENGLAND HIGHWAY", "suburb": "ABERDEEN"}.
+    Split e.g. "Shop 5 172 New England HWY, ABERDEEN NSW 2336" (Foodworks) or
+    "1/137 Croudace Road, Elermore Vale, 2287, NSW" (IGA) into
+    {"number": "172", "number_full": "172", "street": "NEW ENGLAND HIGHWAY", "suburb": "ABERDEEN",
+    "postcode": "2336"}.
     Unit/shop prefixes are dropped; "number" is the first house number of a range
     ("88-94" -> "88"). Returns None for non-NSW addresses; street/number are None
     when the address has no street line (e.g. just "EAST MAITLAND NSW 2323").
     """
-    m = re.match(r"^(.*?)[,\s]+NSW[,\s]+\d{4}\s*$", full.strip(), re.IGNORECASE)
+    m = re.match(
+        r"^(.*?)[,\s]+(?:NSW[,\s]+(\d{4})|(\d{4})[,\s]+NSW)\s*$",
+        full.strip(),
+        re.IGNORECASE,
+    )
     if not m:
         return None
     parts = [p.strip() for p in m.group(1).upper().split(",") if p.strip()]
@@ -173,7 +234,10 @@ def parse_nsw_address(full: str) -> dict | None:
     street = number = number_full = None
     for part in reversed(parts):
         # "SHOP 13 & 14 MELVILLE ROAD": 13 and 14 are shop numbers, not the house number
-        part = UNIT_PREFIX.sub("", part)
+        part = UNIT_PREFIX.sub("", part).rstrip(" &")  # "LINDEN AVE &"
+        if corner := re.match(r"CNR\.?\s+([A-Z][A-Z' ]+?)\s*(?:&|AND)\s", part):
+            street = street or corner.group(1)  # "CNR JACOB STREET & THE MALL"
+            continue
         hit = re.search(r"(\d+[A-Z]?)(?:\s*-\s*(\d+[A-Z]?))?\s+([A-Z][A-Z' ]+)$", part)
         if hit:
             number = hit.group(1)
@@ -192,6 +256,7 @@ def parse_nsw_address(full: str) -> dict | None:
         "number_full": number_full,
         "street": street,
         "suburb": suburb,
+        "postcode": m.group(2) or m.group(3),
     }
 
 
@@ -223,40 +288,70 @@ def _nominatim_address(street: str, suburb: str) -> dict | None:
     return _nominatim(street=street, city=suburb, state="New South Wales")
 
 
+def _nsw_address(a: dict, suburb: str) -> dict | None:
+    """NSW address point for parse_nsw_address() result `a` in `suburb`, or None."""
+    tail = f"{a['street']} {suburb}".replace("'", "''")
+    for candidate in dict.fromkeys([a["number_full"], a["number"]]):
+        hits = _nsw_query(f"address = '{candidate} {tail}'")
+        if hits:
+            break
+    else:
+        # Prefix match, keeping only addresses whose number really starts with ours
+        hits = [
+            h
+            for h in _nsw_query(f"address LIKE '{a['number']}% {tail}'")
+            if re.match(rf"{a['number']}(?:[A-Z]|-|\s)", h["attributes"]["address"])
+        ]
+    if not hits:
+        return None
+    g = hits[0]["geometry"]
+    return {
+        "lat": g["y"],
+        "lon": g["x"],
+        "accuracy": "address",
+        "matched": hits[0]["attributes"]["address"],
+    }
+
+
+def _street_in_postcode(street: str, postcode: str) -> dict | None:
+    """
+    Nominatim's match for `street` in `postcode`, with its official suburb, or None.
+    Store locators sometimes give an unofficial suburb ("Oakhill" for Castle Hill,
+    "Taren Point" for a Caringbah address), which the NSW lookup can't match.
+    Nominatim can ignore the postcode, so the result's postcode must match.
+    """
+    hit = _nominatim(q=f"{street}, {postcode}, New South Wales", addressdetails=1)
+    address = (hit or {}).get("address", {})
+    if not hit or address.get("postcode") != postcode:
+        return None
+    suburb = next(
+        (address[k] for k in ("suburb", "town", "village", "hamlet") if address.get(k)),
+        None,
+    )
+    return {**hit, "official_suburb": suburb.upper() if suburb else None}
+
+
 def geocode(full: str, chain: str) -> dict | None:
     """
     {"lat", "lon", "accuracy": "address" | "street", "matched": <what was found>} for a
     store of `chain` at an NSW street address, or None. Tries NSW address points (exact,
-    then the house number as a prefix to catch "88-92" or "14A"), Nominatim with the
-    number, the store itself if it's mapped in OpenStreetMap ("Foodworks, Glenbrook"),
-    and finally Nominatim with just the street ("street" accuracy).
+    then the house number as a prefix to catch "88-92" or "14A"), the same with the
+    official suburb for the street's postcode, Nominatim with the number, the store
+    itself if it's mapped in OpenStreetMap ("Foodworks, Glenbrook"), and finally just
+    the street ("street" accuracy).
     """
     a = parse_nsw_address(full)
     if not a:
         return None
     if not a["street"]:
         return _osm_shop(chain, a["suburb"])
-    tail = f"{a['street']} {a['suburb']}".replace("'", "''")
-    if a["number"]:
-        for candidate in dict.fromkeys([a["number_full"], a["number"]]):
-            hits = _nsw_query(f"address = '{candidate} {tail}'")
-            if hits:
-                break
-        else:
-            # Prefix match, keeping only addresses whose number really starts with ours
-            hits = [
-                h
-                for h in _nsw_query(f"address LIKE '{a['number']}% {tail}'")
-                if re.match(rf"{a['number']}(?:[A-Z]|-|\s)", h["attributes"]["address"])
-            ]
-        if hits:
-            g = hits[0]["geometry"]
-            return {
-                "lat": g["y"],
-                "lon": g["x"],
-                "accuracy": "address",
-                "matched": hits[0]["attributes"]["address"],
-            }
+    if a["number"] and (found := _nsw_address(a, a["suburb"])):
+        return found
+    in_postcode = _street_in_postcode(a["street"], a["postcode"])
+    official = (in_postcode or {}).get("official_suburb")
+    if a["number"] and official and official != a["suburb"]:
+        if found := _nsw_address(a, official):
+            return found
     if a["number"]:
         hit = _nominatim_address(f"{a['number']} {a['street']}", a["suburb"])
         if hit and hit.get("category") != "highway":
@@ -268,7 +363,7 @@ def geocode(full: str, chain: str) -> dict | None:
             }
     if shop := _osm_shop(chain, a["suburb"]):
         return shop
-    hit = _nominatim_address(a["street"], a["suburb"])
+    hit = _nominatim_address(a["street"], a["suburb"]) or in_postcode
     if hit:
         return {
             "lat": float(hit["lat"]),
@@ -334,6 +429,7 @@ def main():
                 accuracy = "store"
             else:
                 full = props.get("addr:full") or ""
+                full = ADDRESS_FIXES.get(full, full)
                 if not parse_nsw_address(full):
                     continue  # interstate
                 if full not in geocode_cache:

@@ -1,15 +1,15 @@
 """
 Supermarkets API blueprint.
 
-Provides GET /api/supermarkets: Coles, Woolworths, Aldi and Foodworks stores around
+Provides GET /api/supermarkets: Coles, Woolworths, Aldi, Foodworks and IGA stores around
 Sydney and the intercity network, from data/supermarkets/supermarkets.geojson
 (written by scripts/download_supermarkets.py from AllThePlaces, which scrapes each
-retailer's store locator; Foodworks stores are geocoded from their addresses).
+retailer's store locator; Foodworks and IGA stores are geocoded from their addresses).
 Independent of GTFS.
 
 Query parameters:
     full_store (str, optional): "true" for full supermarkets only, "false" for
-        everything else (Coles Local, Woolworths Metro, Foodworks). Default: all.
+        everything else (Coles Local, Woolworths Metro, Foodworks, IGA, IGA Local Grocer/Xpress). Default: all.
 
 Response body (GeoJSON FeatureCollection):
 {
@@ -30,10 +30,11 @@ Response body (GeoJSON FeatureCollection):
             "properties": {
                 "id": "coles_au:4417",
                 "name": "Coles Local Chatswood",
-                "chain": "Coles",                    // Coles | Woolworths | Aldi | Foodworks
-                "store_type": "coles_local",         // coles | coles_local | woolworths | woolworths_metro | aldi | foodworks
+                "chain": "Coles",                    // Coles | Woolworths | Aldi | Foodworks | IGA
+                "store_type": "coles_local",         // coles | coles_local | woolworths | woolworths_metro | aldi | foodworks |
+                                                     // romeos_iga | supa_iga | iga | iga_local
                 "store_type_label": "Coles Local",
-                "full_store": false,                 // false for Coles Local, Woolworths Metro and Foodworks
+                "full_store": false,                 // false for Coles Local, Woolworths Metro, Foodworks, iga, iga_local
                 "address": "...", "opening_hours": "Mo-Su 06:00-22:00", "website": "...",
                 "location_accuracy": "store"         // store (locator coords) | address (geocoded) | street (approximate)
             },

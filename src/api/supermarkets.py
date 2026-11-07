@@ -1,24 +1,27 @@
 """
 Supermarkets API blueprint.
 
-Provides GET /api/supermarkets: Coles, Woolworths and Aldi stores around Sydney
-and the intercity network, from data/supermarkets/supermarkets.geojson (written
-by scripts/download_supermarkets.py from AllThePlaces, which scrapes each
-retailer's store locator). Independent of GTFS.
+Provides GET /api/supermarkets: Coles, Woolworths, Aldi and Foodworks stores around
+Sydney and the intercity network, from data/supermarkets/supermarkets.geojson
+(written by scripts/download_supermarkets.py from AllThePlaces, which scrapes each
+retailer's store locator; Foodworks stores are geocoded from their addresses).
+Independent of GTFS.
 
 Query parameters:
     full_store (str, optional): "true" for full supermarkets only, "false" for
-        small formats only (Coles Local, Woolworths Metro). Default: all.
+        everything else (Coles Local, Woolworths Metro, Foodworks). Default: all.
 
 Response body (GeoJSON FeatureCollection):
 {
     "type": "FeatureCollection",
     "metadata": {
         "source": "AllThePlaces (CC0), ...",
+        "geocoding": "Stores without coordinates were located from their address: ...",
         "alltheplaces_run": "2026-10-17-13-32-31",
         "downloaded_at": "2026-10-25T01:23:45+00:00",
         "bbox": [-35.0, 149.6, -32.0, 152.3],
-        "store_types": {"coles": {"chain": "Coles", "label": "Coles", "full_store": true}, ...},
+        "store_types": {"coles": {"chain": "Coles", "label": "Coles", "full_store": true},
+                        "foodworks": {..., "full_store": false, "note": "Independent grocer: ..."}, ...},
         "counts": {"coles": 182, "coles_local": 12, ...}
     },
     "features": [
@@ -27,11 +30,12 @@ Response body (GeoJSON FeatureCollection):
             "properties": {
                 "id": "coles_au:4417",
                 "name": "Coles Local Chatswood",
-                "chain": "Coles",                    // Coles | Woolworths | Aldi
-                "store_type": "coles_local",         // coles | coles_local | woolworths | woolworths_metro | aldi
+                "chain": "Coles",                    // Coles | Woolworths | Aldi | Foodworks
+                "store_type": "coles_local",         // coles | coles_local | woolworths | woolworths_metro | aldi | foodworks
                 "store_type_label": "Coles Local",
-                "full_store": false,                 // false for Coles Local and Woolworths Metro
-                "address": "...", "opening_hours": "Mo-Su 06:00-22:00", "website": "..."
+                "full_store": false,                 // false for Coles Local, Woolworths Metro and Foodworks
+                "address": "...", "opening_hours": "Mo-Su 06:00-22:00", "website": "...",
+                "location_accuracy": "store"         // store (locator coords) | address (geocoded) | street (approximate)
             },
             "geometry": {"type": "Point", "coordinates": [151.18, -33.79]}
         },

@@ -74,7 +74,7 @@ nswTranportData/
 │   │   ├── isochrone.py          # POST /api/isochrone, GET /api/network
 │   │   ├── rail_network.py       # GET  /api/rail-network (stations + line geometry for the transport map)
 │   │   ├── property_locator.py   # GET  /api/property-locator (+ /isochrones); temporary, see §4.1a
-│   │   └── supermarkets.py       # GET  /api/supermarkets (Coles/Woolworths/Aldi, small formats flagged)
+│   │   └── supermarkets.py       # GET  /api/supermarkets (Coles/Woolworths/Aldi/Foodworks, non-full stores flagged)
 │   ├── gtfs/
 │   │   ├── __init__.py
 │   │   ├── downloader.py         # Downloads & caches GTFS zips from TfNSW (per Sydney date)
@@ -150,7 +150,8 @@ nswTranportData/
     the graph (Newcastle, Central Coast, Wollongong, upper Blue Mountains, ...) have no feature; the page also hides any
     `fallback_circle` features.
   - Supermarkets come from the general `GET /api/supermarkets` (on by default, per-type toggles). Full stores are solid
-    lettered squares in the chain colour; Coles Local / Woolworths Metro are white squares with a dashed border.
+    lettered squares in the chain colour; Coles Local / Woolworths Metro / Foodworks (orange F) are white squares with
+    a dashed border, and their popup shows the store type's `note`.
     A sub-toggle draws the 10-min store walking areas for the ticked store types (small formats dashed).
   - Station walking areas are violet (`STATION_WALK_COLOR`, #7C3AED) so they don't blend with Woolworths green.
   - Clicking a walking area (station or store) selects it: a dark outline, brought to the front, with a small label
@@ -324,19 +325,28 @@ nswTranportData/
 
 - Serves `data/supermarkets/supermarkets.geojson` (re-read on each request, so a re-download needs no restart);
   404 with a hint until `scripts/download_supermarkets.py` has run. `?full_store=true|false` filters.
-- Each Point feature has `name`, `chain` (Coles/Woolworths/Aldi), `store_type` (`coles`, `coles_local`, `woolworths`,
-  `woolworths_metro`, `aldi`), `full_store` (False for the small formats, which have a narrower range and usually
-  higher prices), `address`, `opening_hours` (OSM syntax), `website`. Full schema in the module docstring.
+- Each Point feature has `name`, `chain` (Coles/Woolworths/Aldi/Foodworks), `store_type` (`coles`, `coles_local`,
+  `woolworths`, `woolworths_metro`, `aldi`, `foodworks`), `full_store` (False for the small formats and Foodworks,
+  which have a narrower range and usually higher prices; `metadata.store_types[type].note` says why), `address`,
+  `opening_hours` (OSM syntax), `website`, `location_accuracy` (below). Full schema in the module docstring.
 - `GET /api/supermarkets/isochrones` serves `data/supermarkets/supermarket_isochrones_10min_walk.geojson`: a 10-min
   walking isochrone (1.4 m/s, `compute_isochrone()`) per store, keyed by the same `id`, precomputed by
   `scripts/generate_supermarket_walk_areas.py` so the server never loads the walking graph. 10 min (~800 m) is the
-  usual limit for walking to the shops and carrying groceries home. Re-run the script (after deleting the file)
-  whenever the store list is re-downloaded.
+  usual limit for walking to the shops and carrying groceries home. Re-run the script whenever the store list is
+  re-downloaded: it only computes stores it doesn't have yet (delete the file to recompute moved stores too).
 - Source is [AllThePlaces](https://www.alltheplaces.xyz/) (CC0; weekly scrapes of each retailer's store locator,
   spiders `coles_au`, `woolworths_au`, `aldi_sud_au`), not OSM: OSM tags most Coles Locals as plain "Coles".
   The script classifies Coles branches starting "Coles Local" or "Coles Central" (the older small-format name) as
   `coles_local`, uses the `Woolworths Metro` brand, drops Liquorland etc. and Woolworths fulfilment centres (CFC), and
-  keeps a bbox covering Sydney and the intercity network. 624 stores as of the 2026-10-17 run.
+  keeps a bbox covering Sydney and the intercity network. 680 stores (624 + 56 Foodworks) as of the 2026-10-24 run.
+- Foodworks (`foodworks_au`; bottle shops dropped) is an independent, mostly small-store chain, so `full_store` is
+  False. Its store locator has addresses but **no coordinates**, so the script geocodes them: NSW Spatial Services
+  address points (Geocoded Addressing Theme FeatureServer, CC BY 4.0; exact match, then the house number as a prefix),
+  then Nominatim (≤1 req/s) by address, then the store itself if mapped in OSM ("Foodworks, Glenbrook"), then the
+  street alone. `location_accuracy` is `store` (locator coordinates), `address`, or `street` (approximate; 4 stores;
+  the popup says so). `parse_nsw_address()` strips "Shop 13 & 14" / "2-4/" unit prefixes so shop numbers aren't
+  taken as house numbers. Lookups are cached in `data/supermarkets/geocode_cache.json` (failures too, as null;
+  delete an entry to retry). Avoid street-only `LIKE '% STREET SUBURB'` queries on the NSW service: they take ~30 s.
 - `scripts/generate_supermarket_isochrones.py` is older and still finds stores from OSM by name.
 
 ---
@@ -385,7 +395,7 @@ Configuration is hard-coded as constants at the top of each file.
 | `generate_supermarket_isochrones.py` | Uses OSM to find Coles, Woolworths and Aldi stores, then builds an isochrone for each. Writes `supermarket_isochrones.geojson`. |
 | `all_to_central.py` | Stats from every `sydney_trains` and `sydney_metro` station to Central (`200060`). Writes `stats_to_destination_*.csv`. **Currently broken** (see §11). |
 | `generate_property_isochrones.py` | *Temporary page support.* Loads the walking graph in its own process and writes a 15-min walking isochrone for every train/metro station to `data/property_locator/station_isochrones_15min_walk.geojson` (resumable). Gets station coordinates from the running server's `/api/rail-network`. |
-| `download_supermarkets.py` | Downloads Coles, Woolworths and Aldi locations from the latest AllThePlaces run, classifies Coles Local / Woolworths Metro as small formats, keeps the Sydney + intercity bbox, and writes `data/supermarkets/supermarkets.geojson` for `/api/supermarkets`. No API key or running server needed; ~10 s. |
+| `download_supermarkets.py` | Downloads Coles, Woolworths, Aldi and Foodworks locations from the latest AllThePlaces run, classifies Coles Local / Woolworths Metro as small formats, geocodes Foodworks addresses (cached), keeps the Sydney + intercity bbox, and writes `data/supermarkets/supermarkets.geojson` for `/api/supermarkets`. No API key or running server needed; ~10 s with a warm geocode cache, a few minutes cold. |
 | `generate_supermarket_walk_areas.py` | Loads the walking graph in its own process and writes a 10-min walking isochrone for every store in `data/supermarkets/supermarkets.geojson` to `data/supermarkets/supermarket_isochrones_10min_walk.geojson` (resumable; delete the file after re-downloading stores). Not an HTTP client of the server. |
 | `download_pathways.py` | Downloads TfNSW's complete GTFS bundle (~300 MB, needs the API key) and keeps only `pathways.txt` as `data/pathways/<date>/pathways.txt`; `--from-zip PATH` extracts from a bundle you already have. Not an HTTP client of the server; restart the server afterwards. |
 

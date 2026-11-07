@@ -600,13 +600,15 @@
         const shopsLayer = L.layerGroup().addTo(map);
         const stationsLayer = L.layerGroup().addTo(map);
 
-        // Supermarkets from /api/supermarkets; Coles Local and Woolworths Metro are small formats
+        // Supermarkets from /api/supermarkets; Coles Local, Woolworths Metro and Foodworks aren't
+        // full supermarkets (drawn as white squares with a dashed border)
         const SHOP_STYLE = {
             coles: { color: '#E01A22', letter: 'C' },
             coles_local: { color: '#E01A22', letter: 'C' },
             woolworths: { color: '#178841', letter: 'W' },
             woolworths_metro: { color: '#178841', letter: 'W' },
             aldi: { color: '#1E3A8A', letter: 'A' },
+            foodworks: { color: '#EA580C', letter: 'F' },
         };
         let shops = null;
         // store id -> precomputed 10-min walking isochrone Feature (null until loaded)
@@ -911,21 +913,30 @@
         const shopIcon = (type, full) =>
             `<span class="shop-icon${full ? '' : ' small'}" style="--c:${SHOP_STYLE[type].color}">${SHOP_STYLE[type].letter}</span>`;
 
+        // e.g. "Small format: smaller range, usually pricier" (from the store type's note)
+        const shopNote = (p) => shops.metadata.store_types[p.store_type].note || 'Not a full supermarket';
+        // Short form for tooltips: "small format", "independent grocer"
+        const shopKind = (p) => shopNote(p).split(':')[0].toLowerCase();
+
         function shopPopupHtml(p) {
             const tag = p.full_store
                 ? '<span class="tag">Full supermarket</span>'
-                : `<span class="tag small">Small format (${escapeHtml(p.store_type_label)}): smaller range, usually pricier</span>`;
+                : `<span class="tag small">${escapeHtml(shopNote(p))}</span>`;
+            const approx = p.location_accuracy === 'street'
+                ? '<p class="muted">Location approximate: only the street could be found.</p>' : '';
             return `<div class="shop-popup">
                 <h3>${escapeHtml(p.name)}</h3>
                 ${tag}
                 ${p.address ? `<p>${escapeHtml(p.address)}</p>` : ''}
+                ${approx}
                 ${p.opening_hours ? `<p class="muted">${escapeHtml(p.opening_hours)}</p>` : ''}
                 ${p.website ? `<a href="${escapeHtml(p.website)}" target="_blank" rel="noopener">Store page &rarr;</a>` : ''}
             </div>`;
         }
 
         const shopsSourceNote = () =>
-            `From each chain's store locator via AllThePlaces (${shops.metadata.alltheplaces_run.slice(0, 10)}).`;
+            `From each chain's store locator via AllThePlaces (${shops.metadata.alltheplaces_run.slice(0, 10)}); ` +
+            'Foodworks located from their addresses.';
 
         function setShopsStatus(text, isError = false) {
             const el = document.getElementById('shops-status');
@@ -959,7 +970,7 @@
                     icon: L.divIcon({ className: '', html: shopIcon(p.store_type, p.full_store), iconSize: [16, 16], iconAnchor: [8, 8] }),
                     zIndexOffset: p.full_store ? 0 : 100,  // small formats on top so they aren't hidden
                 })
-                    .bindTooltip(`${escapeHtml(p.name)}${p.full_store ? '' : ' (small format)'}`, { direction: 'top', offset: [0, -8] })
+                    .bindTooltip(`${escapeHtml(p.name)}${p.full_store ? '' : ` (${escapeHtml(shopKind(p))})`}`, { direction: 'top', offset: [0, -8] })
                     .bindPopup(shopPopupHtml(p), { maxWidth: 280 })
                     .addTo(shopsLayer);
             }

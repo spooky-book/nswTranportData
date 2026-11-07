@@ -1,10 +1,10 @@
 """
-Precompute 10-minute walking isochrones around every Coles, Woolworths and Aldi
-store in data/supermarkets/supermarkets.geojson (from download_supermarkets.py).
+Precompute 10-minute walking isochrones around every store in
+data/supermarkets/supermarkets.geojson (from download_supermarkets.py).
 
 10 minutes (~800 m) is the usual limit for walking to the shops and carrying
-the groceries home. Small formats (Coles Local, Woolworths Metro) are included
-and keep their full_store flag, so the map can show or hide them.
+the groceries home. Small formats (Coles Local, Woolworths Metro) and Foodworks
+are included and keep their full_store flag, so the map can show or hide them.
 
 Like generate_property_isochrones.py, this loads the multi-GB walking graph in
 its own short-lived process so the server never has to. No server needed.

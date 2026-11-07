@@ -35,6 +35,7 @@ Usage (from the project root; no API key or running server needed):
 """
 
 import json
+import math
 import re
 import sys
 import time
@@ -61,6 +62,84 @@ NSW_ADDRESS_URL = (
 )
 NOMINATIM_URL = "https://nominatim.openstreetmap.org/search"
 USER_AGENT = "nswTransportData/1.0 (personal research script)"
+
+# Romeo's Retail Group runs IGA-supplied stores, but IGA's store locator lists some of
+# them as plain IGA (North Sydney, Mortdale, Summer Hill) and misses others entirely
+# (South Eveleigh, the Locali stores). So their NSW stores come from Romeo's own list,
+# copied by hand from ROMEOS_URL (checked 2026-11-07; re-check it when re-downloading):
+# (page slug, name, store type, address). Each replaces any IGA-locator store within
+# ROMEOS_MATCH_M. Romeo's stores that only IGA's locator lists (Paddington, Parramatta,
+# Turramurra) stay as IGA lists them.
+ROMEOS_URL = "https://romeosretailgroup.com.au/locations-nsw/"
+ROMEOS_MATCH_M = 100
+ROMEOS_NSW = [
+    (
+        "bondi-food-hall",
+        "Romeo's Food Hall Bondi",
+        "romeos_iga",
+        "48 Hall Street, Bondi Beach NSW 2026",
+    ),
+    (
+        "doonside-supa-valu",
+        "Romeo's Supa Valu Doonside",
+        "iga",
+        "52 Rosenthal Street, Doonside NSW 2767",
+    ),
+    (
+        "george-st-locali",
+        "Romeo's Locali George St",
+        "romeos_small",
+        "388 George Street, Sydney NSW 2000",
+    ),
+    (
+        "martin-place-food-hall",
+        "Romeo's Locali Martin Place",
+        "romeos_small",
+        "25 Martin Place, Sydney NSW 2000",
+    ),
+    (
+        "mortdale-food-hall",
+        "Romeo's Food Hall Mortdale",
+        "romeos_iga",
+        "42-44 Morts Road, Mortdale NSW 2223",
+    ),
+    (
+        "north-sydney-food-hall",
+        "Romeo's Food Hall North Sydney",
+        "romeos_iga",
+        "36 Blue Street, North Sydney NSW 2060",
+    ),
+    (
+        "romeos-foodhall-st-leonards",
+        "Romeo's Food Hall St Leonards",
+        "romeos_iga",
+        "201-205 Pacific Highway, St Leonards NSW 2065",
+    ),
+    (
+        "south-eveleigh-food-hall",
+        "Romeo's Food Hall South Eveleigh",
+        "romeos_iga",
+        "2 Locomotive Street, Eveleigh NSW 2015",
+    ),
+    (
+        "summer-hill-food-hall",
+        "Romeo's Food Hall Summer Hill",
+        "romeos_iga",
+        "1-11 Hardie Street, Summer Hill NSW 2130",
+    ),
+    (
+        "wynyard-station-locali",
+        "Romeo's Locali Wynyard Station",
+        "romeos_small",
+        "301 George Street, Sydney NSW 2000",
+    ),
+    (
+        "kirribilli-romeos-local-grocer",
+        "Romeo's Local Grocer Kirribilli",
+        "romeos_small",
+        "23-25 Broughton Street, Kirribilli NSW 2061",
+    ),
+]
 
 # Store-locator addresses with street-name typos, corrected after checking the
 # right spelling exists in the NSW address points (2026-11-07)
@@ -105,6 +184,12 @@ STORE_TYPES = {
         "label": "Romeo's IGA",
         "full_store": True,
         "note": "Premium food hall: full range, pricier",
+    },
+    "romeos_small": {
+        "chain": "IGA",
+        "label": "Romeo's Locali / Local Grocer",
+        "full_store": False,
+        "note": "Small format: Romeo's convenience store, pricier",
     },
     "supa_iga": {
         "chain": "IGA",
@@ -392,6 +477,56 @@ def _osm_shop(chain: str, suburb: str) -> dict | None:
     return None
 
 
+def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Equirectangular distance; plenty accurate over a few hundred metres."""
+    dx = math.radians(lon2 - lon1) * math.cos(math.radians(lat1))
+    return 6_371_000 * math.hypot(math.radians(lat2 - lat1), dx)
+
+
+def add_romeos(features: list, geocode_cache: dict, not_found: list) -> None:
+    """Add ROMEOS_NSW to `features`, replacing IGA-locator duplicates of each store."""
+    for slug, name, store_type, full in ROMEOS_NSW:
+        if full not in geocode_cache:
+            geocode_cache[full] = geocode(full, "IGA")
+        hit = geocode_cache[full]
+        if hit is None:
+            not_found.append(f"{name}: {full}")
+            continue
+        features[:] = [
+            f
+            for f in features
+            if f["properties"]["chain"] != "IGA"
+            or _distance_m(hit["lat"], hit["lon"], *f["geometry"]["coordinates"][::-1])
+            > ROMEOS_MATCH_M
+        ]
+        info = STORE_TYPES[store_type]
+        features.append(
+            {
+                "type": "Feature",
+                "properties": {
+                    "id": f"romeos:{slug}",
+                    "name": name,
+                    "chain": info["chain"],
+                    "store_type": store_type,
+                    "store_type_label": info["label"],
+                    "full_store": info["full_store"],
+                    "address": full,
+                    "opening_hours": None,
+                    "website": (
+                        f"https://romeosretailgroup.com.au/{slug}/"
+                        if slug.startswith("kirribilli")
+                        else f"{ROMEOS_URL}{slug}/"
+                    ),
+                    "location_accuracy": hit["accuracy"],
+                },
+                "geometry": {
+                    "type": "Point",
+                    "coordinates": [round(hit["lon"], 6), round(hit["lat"], 6)],
+                },
+            }
+        )
+
+
 def load_geocode_cache() -> dict:
     if GEOCODE_CACHE_PATH.exists():
         return json.loads(GEOCODE_CACHE_PATH.read_text(encoding="utf-8"))
@@ -485,6 +620,11 @@ def main():
                     },
                 }
             )
+
+    try:
+        add_romeos(features, geocode_cache, not_found)
+    except requests.RequestException as e:
+        print(f"    geocoding Romeo's stores failed: {e}")
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     GEOCODE_CACHE_PATH.write_text(json.dumps(geocode_cache, indent=1), encoding="utf-8")

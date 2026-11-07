@@ -151,8 +151,8 @@ nswTranportData/
     `fallback_circle` features.
   - Supermarkets come from the general `GET /api/supermarkets` (on by default, per-type toggles). Full stores are solid
     lettered squares in the chain colour; Coles Local / Woolworths Metro / Foodworks (orange F) / IGA (pink I;
-    lower-case i for Local Grocer/Xpress) are white squares with a dashed border. Romeo's IGA (cyan R) and Supa IGA
-    are solid. Popups show the store type's `note`.
+    lower-case i for Local Grocer/Xpress) are white squares with a dashed border. Romeo's Food Halls (cyan R) and Supa IGA
+    are solid; Romeo's Locali / Local Grocer are a dashed cyan R. Popups show the store type's `note`.
     A sub-toggle draws the 10-min store walking areas for the ticked store types (small formats dashed).
   - Station walking areas are violet (`STATION_WALK_COLOR`, #7C3AED) so they don't blend with Woolworths green.
   - Clicking a walking area (station or store) selects it: a dark outline, brought to the front, with a small label
@@ -327,7 +327,8 @@ nswTranportData/
 - Serves `data/supermarkets/supermarkets.geojson` (re-read on each request, so a re-download needs no restart);
   404 with a hint until `scripts/download_supermarkets.py` has run. `?full_store=true|false` filters.
 - Each Point feature has `name`, `chain` (Coles/Woolworths/Aldi/Foodworks/IGA), `store_type` (`coles`, `coles_local`,
-  `woolworths`, `woolworths_metro`, `aldi`, `foodworks`, `romeos_iga`, `supa_iga`, `iga`, `iga_local`), `full_store`
+  `woolworths`, `woolworths_metro`, `aldi`, `foodworks`, `romeos_iga`, `romeos_small`, `supa_iga`, `iga`, `iga_local`),
+  `full_store`
   (False for the small formats, Foodworks and plain IGA, which have a narrower range and usually higher prices;
   `metadata.store_types[type].note` gives the reason, and also flags pricier full stores like Romeo's), `address`,
   `opening_hours` (OSM syntax), `website`, `location_accuracy` (below). Full schema in the module docstring.
@@ -340,8 +341,8 @@ nswTranportData/
   spiders `coles_au`, `woolworths_au`, `aldi_sud_au`), not OSM: OSM tags most Coles Locals as plain "Coles".
   The script classifies Coles branches starting "Coles Local" or "Coles Central" (the older small-format name) as
   `coles_local`, uses the `Woolworths Metro` brand, drops Liquorland etc. and Woolworths fulfilment centres (CFC), and
-  keeps a bbox covering Sydney and the intercity network. 924 stores (624 + 56 Foodworks + 244 IGA) as of the
-  2026-10-24 run; 625 have walking areas (the rest are outside the walking graph).
+  keeps a bbox covering Sydney and the intercity network. 929 stores (624 + 56 Foodworks + 249 IGA incl. Romeo's) as
+  of the 2026-10-24 run; 636 have walking areas (the rest are outside the walking graph).
 - Foodworks (`foodworks_au`; bottle shops dropped) is an independent, mostly small-store chain, so `full_store` is
   False.
 - IGA (`iga_au`) stores are independently owned; the format comes from the store's name: "Romeo" → `romeos_iga`
@@ -350,6 +351,12 @@ nswTranportData/
   banners in the IGA locator, e.g. Supamart). IGA has no `branch`, so `display_name()` uses the store's own name minus
   "+ Liquor" / "Plus Liquor", with U+FFFD apostrophes repaired. IGA addresses come as "street, suburb, 2287, NSW"
   rather than Foodworks' "street, SUBURB NSW 2336"; `parse_nsw_address()` handles both.
+- **Romeo's**: IGA's locator lists some Romeo's stores as plain IGA (North Sydney, Mortdale, Summer Hill) and misses
+  others (South Eveleigh, the CBD Locali stores). So `ROMEOS_NSW` in the script is a hand-copied table of Romeo's
+  own NSW list (romeosretailgroup.com.au/locations-nsw/, checked 2026-11-07; re-check it when re-downloading): Food
+  Halls → `romeos_iga`, Locali / Local Grocer → `romeos_small`, Supa Valu Doonside → `iga`. `add_romeos()` geocodes
+  them and drops any IGA-locator store within `ROMEOS_MATCH_M` (100 m). Paddington, Parramatta and Turramurra are
+  Romeo's only in IGA's locator (not on Romeo's own list) and stay as IGA lists them.
 - Foodworks' and IGA's store locators have addresses but **no coordinates**, so the script geocodes them: NSW Spatial Services
   address points (Geocoded Addressing Theme FeatureServer, CC BY 4.0; exact match, then the house number as a prefix),
   the same again with the official suburb when Nominatim finds the street in the store's postcode under another

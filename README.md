@@ -9,7 +9,7 @@ A Python/Flask application that consumes [GTFS (General Transit Feed Specificati
 - **Journey Planner** — Timetable-based routing between two stations, including transfers (`/api/trips`).
 - **Transport Map** — Every Sydney Trains, Sydney Metro and NSW TrainLink (intercity and regional) station and line on one map, with per-network toggles, station search and a popup listing each station's lines.
 - **Isochrone Explorer** — Walking/cycling reachability polygons computed on a local OpenStreetMap street graph, with an interactive Leaflet UI for generating, importing/exporting, and merging/intersecting isochrone layers.
-- **Supermarkets** — Coles, Woolworths, Aldi, Foodworks and IGA stores around Sydney (Coles Local, Woolworths Metro, Foodworks and most IGA formats marked as not full supermarkets; IGA split into Romeo's, Supa IGA, IGA and IGA Local Grocer/Xpress), with a precomputed 10-minute walking area around each.
+- **Supermarkets** — Coles, Woolworths, Aldi, Foodworks and IGA stores around Sydney (Coles Local, Woolworths Metro, Foodworks and most IGA formats marked as not full supermarkets; IGA split into Romeo's, Supa IGA, IGA and IGA Local Grocer/Xpress, with Romeo's own store list filling gaps in IGA's), with a precomputed 10-minute walking area around each.
 - **Multi-mode Support** — Sydney Trains, Sydney Metro, NSW TrainLink, four light rail networks and two ferry operators, plus a combined trains + metro mode.
 - **Smart Caching** — GTFS zips are downloaded once per (Sydney) day and cached on disk; parsed feeds are cached in memory.
 - **Batch Scripts** — Scripts that call the running API to generate GeoJSON isochrone layers and CSV travel-time reports.

@@ -32,9 +32,9 @@ Response body (GeoJSON FeatureCollection):
                 "name": "Coles Local Chatswood",
                 "chain": "Coles",                    // Coles | Woolworths | Aldi | Foodworks | IGA
                 "store_type": "coles_local",         // coles | coles_local | woolworths | woolworths_metro | aldi | foodworks |
-                                                     // romeos_iga | supa_iga | iga | iga_local
+                                                     // romeos_iga | romeos_small | supa_iga | iga | iga_local
                 "store_type_label": "Coles Local",
-                "full_store": false,                 // false for Coles Local, Woolworths Metro, Foodworks, iga, iga_local
+                "full_store": false,                 // false for Coles Local, Woolworths Metro, Foodworks, romeos_small, iga, iga_local
                 "address": "...", "opening_hours": "Mo-Su 06:00-22:00", "website": "...",
                 "location_accuracy": "store"         // store (locator coords) | address (geocoded) | street (approximate)
             },

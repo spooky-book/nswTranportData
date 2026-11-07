@@ -106,4 +106,5 @@ def supermarket_isochrones():
                 "hint": "Run: uv run python scripts/generate_supermarket_walk_areas.py",
             }
         ), 404
-    return send_file(ISOCHRONES_PATH, mimetype="application/geo+json")
+    # max_age=0: the browser revalidates, so a regenerated file shows up on reload
+    return send_file(ISOCHRONES_PATH, mimetype="application/geo+json", max_age=0)

@@ -326,4 +326,5 @@ def property_locator_isochrones():
                 "hint": "With the server running, run: uv run python scripts/generate_property_isochrones.py",
             }
         ), 404
-    return send_file(ISOCHRONES_PATH, mimetype="application/geo+json")
+    # max_age=0: the browser revalidates, so a regenerated file shows up on reload
+    return send_file(ISOCHRONES_PATH, mimetype="application/geo+json", max_age=0)

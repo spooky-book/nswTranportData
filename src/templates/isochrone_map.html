@@ -279,6 +279,16 @@
             border-top: 1px solid #E5E7EB;
         }
 
+        /* Clicking a shape focuses it, and the browser outlines its whole bounding box.
+           Drop that box; keyboard focus thickens the shape's own outline instead. */
+        .leaflet-container path.leaflet-interactive:focus {
+            outline: none;
+        }
+
+        .leaflet-container path.leaflet-interactive:focus-visible {
+            stroke-width: 4px;
+            stroke-opacity: 1;
+        }
     </style>
 </head>
 <body>

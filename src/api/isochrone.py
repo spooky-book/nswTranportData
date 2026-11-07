@@ -27,9 +27,11 @@ Response body (JSON):
 from pathlib import Path
 
 import networkx as nx
+import numpy as np
 import osmnx as ox
 from flask import Blueprint, jsonify, request
 from shapely.geometry import MultiPoint
+from sklearn.neighbors import BallTree
 import threading
 
 isochrone_bp = Blueprint("isochrone", __name__, url_prefix="/api")
@@ -43,6 +45,13 @@ _GRAPH_LOCK = threading.Lock()
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 GRAPH_PATH = DATA_DIR / "osmnx" / "sydney_walk.graphml"
+
+# Snapping origins onto the graph (see _build_snap_index)
+MIN_COMPONENT_NODES = 1000
+MAX_SNAP_METERS = 300  # further than this from any street = outside the graph
+EARTH_RADIUS_M = 6_371_008.8
+_SNAP_TREE = None
+_SNAP_NODES: list = []
 
 
 def get_graph():
@@ -77,10 +86,52 @@ def get_graph():
 
                 data["penalty_sec"] = penalty_sec
 
+            print("Indexing the main walking network for snapping...")
+            _build_snap_index(_WALK_GRAPH)
+
             _GRAPH_LOADED = True
             print("Graph loaded successfully.")
 
     return _WALK_GRAPH
+
+
+def _build_snap_index(G) -> None:
+    """
+    Build a haversine BallTree over the nodes origins may snap to:
+    - only nodes in connected pieces of at least MIN_COMPONENT_NODES. Small pieces
+      (paths inside shopping centres, ...) aren't linked to the streets;
+    - only nodes on at least one non-`service` way (street, footpath, ...). A point
+      inside a shopping centre otherwise snaps onto its car park, whose aisles can
+      take a long detour to reach the streets (e.g. Westfield Miranda reached 84
+      nodes in 10 min instead of ~500).
+    Snapping onto either gives a far-too-small isochrone.
+    """
+    global _SNAP_TREE, _SNAP_NODES
+
+    def on_street(n) -> bool:
+        for _, _, data in G.edges(n, data=True):
+            highway = data.get("highway", "")
+            highways = highway if isinstance(highway, list) else [highway]
+            if any(h != "service" for h in highways):
+                return True
+        return False
+
+    nodes = [
+        n
+        for component in nx.weakly_connected_components(G)
+        if len(component) >= MIN_COMPONENT_NODES
+        for n in component
+        if on_street(n)
+    ]
+    coords = np.radians([[G.nodes[n]["y"], G.nodes[n]["x"]] for n in nodes])
+    _SNAP_TREE = BallTree(coords, metric="haversine")
+    _SNAP_NODES = nodes
+
+
+def snap_to_graph(lat: float, lon: float) -> tuple[int, float]:
+    """Nearest snappable node (see _build_snap_index) to (lat, lon) and its distance in metres. Call get_graph() first."""
+    dist, idx = _SNAP_TREE.query(np.radians([[lat, lon]]), k=1)
+    return _SNAP_NODES[idx[0][0]], float(dist[0][0]) * EARTH_RADIUS_M
 
 
 @isochrone_bp.route("/isochrone", methods=["POST"])
@@ -124,6 +175,7 @@ def calculate_isochrone():
             "resolution": resolution,
             "reachable_nodes": result["reachable_nodes"],
             "fallback_circle": result["fallback_circle"],
+            "snap_distance_m": round(result["snap_distance_m"], 1),
             "isochrone": result["polygon"].__geo_interface__,
         }
     )
@@ -140,16 +192,20 @@ def compute_isochrone(
     """
     Compute an isochrone polygon on graph G (from get_graph()).
 
-    Returns {"polygon": shapely geometry, "reachable_nodes": int, "fallback_circle": bool}.
-    Raises LookupError if nothing is reachable. Usable outside a request, e.g. from scripts.
+    Returns {"polygon": shapely geometry, "reachable_nodes": int, "fallback_circle": bool,
+    "snap_distance_m": float}. Raises LookupError if the point is more than MAX_SNAP_METERS
+    from the main walking network (i.e. outside the graph) or nothing is reachable.
+    Usable outside a request, e.g. from scripts.
     """
     max_duration_sec = max_duration_minutes * 60
 
-    # 1. Find the nearest node on the graph to the requested coordinates
-    try:
-        center_node = ox.distance.nearest_nodes(G, X=lon, Y=lat)
-    except Exception as e:
-        raise RuntimeError(f"Failed to find nearest node: {e}") from e
+    # 1. Find the nearest main-network node to the requested coordinates
+    center_node, snap_distance_m = snap_to_graph(lat, lon)
+    if snap_distance_m > MAX_SNAP_METERS:
+        raise LookupError(
+            f"No walkable street within {MAX_SNAP_METERS} m (nearest is "
+            f"{snap_distance_m / 1000:.1f} km away); the point is outside the walking graph."
+        )
 
     # 2. Calculate travel times for all edges dynamically
     # Use ego_graph/Dijkstra to find reachable nodes.
@@ -230,6 +286,7 @@ def compute_isochrone(
         "polygon": poly,
         "reachable_nodes": len(reachable_nodes),
         "fallback_circle": used_fallback,
+        "snap_distance_m": snap_distance_m,
     }
 
 

@@ -87,6 +87,7 @@ def main():
                 "speed": WALK_SPEED,
                 "reachable_nodes": result["reachable_nodes"],
                 "fallback_circle": result["fallback_circle"],
+                "snap_distance_m": round(result["snap_distance_m"], 1),
             },
             "geometry": {
                 "type": geometry["type"],
@@ -94,13 +95,14 @@ def main():
             },
         }
 
-        if i % SAVE_EVERY == 0 or i == len(todo):
+        if i % SAVE_EVERY == 0:
             save(features)
             rate = (time.time() - start) / i
             print(
                 f"  {i}/{len(todo)} done ({rate:.1f} s each, ~{rate * (len(todo) - i) / 60:.0f} min left)"
             )
 
+    save(features)
     print(f"Saved {len(features)} isochrones to {ISOCHRONES_PATH}")
 
 

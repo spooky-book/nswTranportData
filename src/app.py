@@ -14,6 +14,7 @@ from api.trips import trips_bp
 from api.isochrone import isochrone_bp
 from api.rail_network import rail_network_bp
 from api.property_locator import property_locator_bp
+from api.supermarkets import supermarkets_bp
 from config import FLASK_PORT
 from pages import pages_bp
 
@@ -31,6 +32,7 @@ def create_app() -> Flask:
     app.register_blueprint(isochrone_bp)
     app.register_blueprint(rail_network_bp)
     app.register_blueprint(property_locator_bp)
+    app.register_blueprint(supermarkets_bp)
     app.register_blueprint(pages_bp)
 
     @app.route("/api")
@@ -65,6 +67,10 @@ def create_app() -> Flask:
                 "network": "/api/network?lat=<lat>&lon=<lon>",
                 # Rail network endpoint (stations + line geometry for the transport map)
                 "rail_network": "/api/rail-network",
+                # Coles / Woolworths / Aldi locations (small formats flagged)
+                "supermarkets": "/api/supermarkets",
+                "supermarkets_full_only": "/api/supermarkets?full_store=true",
+                "supermarket_isochrones": "/api/supermarkets/isochrones  (10-min walking areas)",
             },
             "pages": {
                 "home": "/",

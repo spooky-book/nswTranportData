@@ -218,6 +218,8 @@
                     <tr><td><span class="method">GET</span><a href="/api/stations">/api/stations</a></td><td>Stations for a mode; <code>?search=</code>, <code>?mode=</code></td></tr>
                     <tr><td><span class="method">GET</span><a href="/api/stops">/api/stops</a></td><td>Stops of any location type; <code>?location_type=0-4</code></td></tr>
                     <tr><td><span class="method">GET</span><a href="/api/rail-network">/api/rail-network</a></td><td>Train and metro stations with their lines, plus line geometry</td></tr>
+                    <tr><td><span class="method">GET</span><a href="/api/supermarkets">/api/supermarkets</a></td><td>Coles, Woolworths and Aldi stores, with Coles Local and Woolworths Metro marked as small formats; <code>?full_store=true</code></td></tr>
+                    <tr><td><span class="method">GET</span><a href="/api/supermarkets/isochrones">/api/supermarkets/isochrones</a></td><td>Precomputed 10-min walking area around each store (GeoJSON)</td></tr>
                     <tr><td><span class="method">POST</span><code>/api/stop-stats</code></td><td>Daily trip counts and service span per station</td></tr>
                     <tr><td><span class="method">POST</span><code>/api/trip-stats</code></td><td>Direct-service headways and travel times between two stations; <code>"period": "am_peak"</code> etc.</td></tr>
                     <tr><td><span class="method">POST</span><code>/api/trips</code></td><td>Journey planner with transfers</td></tr>

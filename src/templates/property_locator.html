@@ -171,6 +171,16 @@
             gap: 4px;
         }
 
+        .area-swatch {
+            width: 14px;
+            height: 10px;
+            border-radius: 2px;
+            border: 1.5px solid var(--c);
+            background: color-mix(in srgb, var(--c) 20%, transparent);
+            display: inline-block;
+            flex-shrink: 0;
+        }
+
         .dot {
             width: 10px;
             height: 10px;
@@ -179,6 +189,108 @@
             box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15);
             display: inline-block;
             flex-shrink: 0;
+        }
+
+        .shop-types {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 12px;
+            padding-left: 24px;
+        }
+
+        .shop-types[hidden] {
+            display: none;
+        }
+
+        .sub-check {
+            padding-left: 24px;
+        }
+
+        .sub-check[hidden] {
+            display: none;
+        }
+
+        .shop-types label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.75rem;
+            color: var(--text-main);
+            cursor: pointer;
+        }
+
+        .shop-types .count {
+            color: var(--text-muted);
+        }
+
+        /* Supermarket markers: solid square = full store, dashed white square = small format */
+        .shop-icon {
+            width: 16px;
+            height: 16px;
+            box-sizing: border-box;
+            border-radius: 4px;
+            border: 1.5px solid #ffffff;
+            box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+            background: var(--c);
+            color: #ffffff;
+            font: 700 10px/1 'Inter', sans-serif;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .shop-icon.small {
+            background: #ffffff;
+            color: var(--c);
+            border: 2px dashed var(--c);
+        }
+
+        .area-popup .leaflet-popup-content {
+            margin: 8px 12px;
+            font-size: 0.8rem;
+            line-height: 1.4;
+        }
+
+        .area-popup .muted {
+            color: var(--text-muted);
+        }
+
+        .shop-popup h3 {
+            font-size: 0.95rem;
+            margin: 0 0 4px;
+        }
+
+        .shop-popup .tag {
+            display: inline-block;
+            font-size: 0.7rem;
+            font-weight: 600;
+            padding: 2px 6px;
+            border-radius: 4px;
+            background: #F3F4F6;
+            color: var(--text-main);
+            margin-bottom: 6px;
+        }
+
+        .shop-popup .tag.small {
+            background: #FEF3C7;
+            color: #92400E;
+        }
+
+        .shop-popup p {
+            margin: 2px 0;
+            font-size: 0.8rem;
+        }
+
+        .shop-popup .muted {
+            color: var(--text-muted);
+        }
+
+        .shop-popup a {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
         }
 
         .summary {
@@ -396,6 +508,17 @@
         .station-popup a:hover {
             text-decoration: underline;
         }
+
+        /* Clicking a shape focuses it, and the browser outlines its whole bounding box.
+           Drop that box; keyboard focus thickens the shape's own outline instead. */
+        .leaflet-container path.leaflet-interactive:focus {
+            outline: none;
+        }
+
+        .leaflet-container path.leaflet-interactive:focus-visible {
+            stroke-width: 4px;
+            stroke-opacity: 1;
+        }
     </style>
 </head>
 <body>
@@ -426,8 +549,12 @@
             </div>
 
             <label class="check"><input type="checkbox" id="show-all"> Include stations that miss a limit</label>
-            <label class="check"><input type="checkbox" id="show-walk"> Show 15-min walking areas around matching stations</label>
+            <label class="check"><input type="checkbox" id="show-walk"> Show 15-min walking areas around matching stations <i class="area-swatch" style="--c: #7C3AED"></i></label>
             <div class="hint" id="walk-status" hidden></div>
+            <label class="check"><input type="checkbox" id="show-shops" checked> Show supermarkets</label>
+            <div class="shop-types" id="shop-types" hidden></div>
+            <label class="check sub-check" id="shop-walk-row" hidden><input type="checkbox" id="show-shop-walk"> Show 10-min walking areas around the ticked stores</label>
+            <div class="hint" id="shops-status" hidden></div>
 
             <div class="summary" id="summary"></div>
 
@@ -455,17 +582,36 @@
             offpeak: { time: 40, every: 20 },
         };
         const COLORS = { match: '#16A34A', partial: '#F59E0B', none: '#9CA3AF' };
+        // Violet: distinct from the station dots and the Coles/Woolworths/Aldi colours
+        const STATION_WALK_COLOR = '#7C3AED';
 
         const map = L.map('map', { zoomControl: false }).setView([-33.85, 151.05], 11);
         L.control.zoom({ position: 'bottomright' }).addTo(map);
         addBasemaps(map);
 
+        map.createPane('shopwalk').style.zIndex = 404;
         map.createPane('walk').style.zIndex = 405;
         map.createPane('lines').style.zIndex = 410;
+        map.createPane('shops').style.zIndex = 415;
         map.createPane('stations').style.zIndex = 420;
+        const shopWalkLayer = L.layerGroup().addTo(map);
         const walkLayer = L.layerGroup().addTo(map);
         const linesLayer = L.layerGroup().addTo(map);
+        const shopsLayer = L.layerGroup().addTo(map);
         const stationsLayer = L.layerGroup().addTo(map);
+
+        // Supermarkets from /api/supermarkets; Coles Local and Woolworths Metro are small formats
+        const SHOP_STYLE = {
+            coles: { color: '#E01A22', letter: 'C' },
+            coles_local: { color: '#E01A22', letter: 'C' },
+            woolworths: { color: '#178841', letter: 'W' },
+            woolworths_metro: { color: '#178841', letter: 'W' },
+            aldi: { color: '#1E3A8A', letter: 'A' },
+        };
+        let shops = null;
+        // store id -> precomputed 10-min walking isochrone Feature (null until loaded)
+        let shopWalkAreas = null;
+        let shopWalkLoading = null;
 
         // stop_id -> precomputed 15-min walking isochrone Feature (null until loaded)
         let walkAreas = null;
@@ -659,16 +805,236 @@
                 .map((s) => walkAreas[s.stop_id]);
         }
 
+        // Click-to-select for walking areas: the selected one gets a dark outline and comes to
+        // the front; the rest keep their normal style. Clicking again where areas overlap cycles through them.
+        const SELECTED_AREA_STYLE = { color: '#111827', weight: 3, opacity: 1, fillOpacity: 0.3, dashArray: null };
+        const areas = new Map();  // 'station:<stop_id>' | 'store:<id>' -> { layer, base, label }
+        let selectedArea = null;
+        const selectionPopup = L.popup({ autoPan: false, closeButton: false, className: 'area-popup' });
+
+        function registerArea(key, layer, base, label) {
+            areas.set(key, { layer, base, label });
+            layer.on('click', (e) => {
+                L.DomEvent.stopPropagation(e);  // keep the map's click from clearing the selection
+                selectAreaAt(e.latlng, key);
+            });
+        }
+
+        function forgetAreas(kind) {
+            for (const key of [...areas.keys()]) if (key.startsWith(`${kind}:`)) areas.delete(key);
+        }
+
+        function ringContains(ring, x, y) {
+            let inside = false;
+            for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+                const [xi, yi] = ring[i], [xj, yj] = ring[j];
+                if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+            }
+            return inside;
+        }
+
+        function geometryContains(geometry, x, y) {
+            const polygons = geometry.type === 'Polygon' ? [geometry.coordinates]
+                : geometry.type === 'MultiPolygon' ? geometry.coordinates : [];
+            return polygons.some(([outer, ...holes]) => ringContains(outer, x, y) && !holes.some((h) => ringContains(h, x, y)));
+        }
+
+        // Every visible area under a point, top-most first (station areas sit above store areas,
+        // and within each group later ones are drawn on top)
+        function areasAt(latlng) {
+            const keys = [...areas.keys()].filter((k) => geometryContains(areas.get(k).layer.feature.geometry, latlng.lng, latlng.lat));
+            const group = (k) => (k.startsWith('station:') ? 0 : 1);
+            return keys.reverse().sort((a, b) => group(a) - group(b));
+        }
+
+        function selectAreaAt(latlng, clickedKey) {
+            const here = areasAt(latlng);
+            if (!here.includes(clickedKey)) here.unshift(clickedKey);
+            const i = here.indexOf(selectedArea);
+            selectedArea = i === -1 ? clickedKey : here[(i + 1) % here.length];
+            applySelection();
+            const n = here.length, pos = here.indexOf(selectedArea) + 1;
+            selectionPopup
+                .setLatLng(latlng)
+                .setContent(`<strong>${escapeHtml(areas.get(selectedArea).label)}</strong>` +
+                    (n > 1 ? `<br><span class="muted">${pos} of ${n} areas here; click again for the next</span>` : ''))
+                .openOn(map);
+        }
+
+        function clearSelection() {
+            if (!selectedArea) return;
+            selectedArea = null;
+            map.closePopup(selectionPopup);
+            applySelection();
+        }
+
+        function applySelection() {
+            if (selectedArea && !areas.has(selectedArea)) {  // its layer was redrawn away
+                selectedArea = null;
+                map.closePopup(selectionPopup);
+            }
+            for (const [key, a] of areas) {
+                if (key === selectedArea) {
+                    a.layer.setStyle({ ...a.base, ...SELECTED_AREA_STYLE });
+                    a.layer.bringToFront();
+                } else a.layer.setStyle(a.base);
+            }
+        }
+
+        map.on('click', clearSelection);
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') clearSelection(); });
+
+        const AREA_HINT = 'Click an area to highlight it; click again to cycle through overlapping ones.';
+
         function renderWalk() {
             walkLayer.clearLayers();
-            if (!document.getElementById('show-walk').checked || !walkAreas) return;
+            forgetAreas('station');
+            if (!document.getElementById('show-walk').checked || !walkAreas) {
+                applySelection();
+                return;
+            }
             const features = matchingWalkFeatures();
+            const base = { color: STATION_WALK_COLOR, weight: 1.5, opacity: 0.7, fillColor: STATION_WALK_COLOR, fillOpacity: 0.12, dashArray: null };
             L.geoJSON({ type: 'FeatureCollection', features }, {
                 pane: 'walk',
-                style: { color: COLORS.match, weight: 1, opacity: 0.6, fillColor: COLORS.match, fillOpacity: 0.12 },
-                onEachFeature: (f, layer) => layer.bindTooltip(`15-min walk from ${escapeHtml(f.properties.name)}`, { sticky: true }),
+                style: base,
+                onEachFeature: (f, layer) => {
+                    const label = `15-min walk from ${f.properties.name}`;
+                    layer.bindTooltip(escapeHtml(label), { sticky: true });
+                    registerArea(`station:${f.properties.stop_id}`, layer, base, label);
+                },
             }).addTo(walkLayer);
-            setWalkStatus(`Walking areas shown for ${features.length} matching stations (15 min at 1.4 m/s).`);
+            applySelection();
+            setWalkStatus(`Walking areas shown for ${features.length} matching stations (15 min at 1.4 m/s). ${AREA_HINT}`);
+        }
+
+        const shopIcon = (type, full) =>
+            `<span class="shop-icon${full ? '' : ' small'}" style="--c:${SHOP_STYLE[type].color}">${SHOP_STYLE[type].letter}</span>`;
+
+        function shopPopupHtml(p) {
+            const tag = p.full_store
+                ? '<span class="tag">Full supermarket</span>'
+                : `<span class="tag small">Small format (${escapeHtml(p.store_type_label)}): smaller range, usually pricier</span>`;
+            return `<div class="shop-popup">
+                <h3>${escapeHtml(p.name)}</h3>
+                ${tag}
+                ${p.address ? `<p>${escapeHtml(p.address)}</p>` : ''}
+                ${p.opening_hours ? `<p class="muted">${escapeHtml(p.opening_hours)}</p>` : ''}
+                ${p.website ? `<a href="${escapeHtml(p.website)}" target="_blank" rel="noopener">Store page &rarr;</a>` : ''}
+            </div>`;
+        }
+
+        const shopsSourceNote = () =>
+            `From each chain's store locator via AllThePlaces (${shops.metadata.alltheplaces_run.slice(0, 10)}).`;
+
+        function setShopsStatus(text, isError = false) {
+            const el = document.getElementById('shops-status');
+            el.hidden = !text;
+            el.textContent = text || '';
+            el.style.color = isError ? '#DC2626' : '';
+        }
+
+        function buildShopTypes() {
+            const types = shops.metadata.store_types;
+            document.getElementById('shop-types').innerHTML = Object.keys(SHOP_STYLE).map((key) => `
+                <label><input type="checkbox" data-type="${key}" checked>${shopIcon(key, types[key].full_store)}${escapeHtml(types[key].label)}
+                    <span class="count">${shops.metadata.counts[key] || 0}</span></label>`).join('');
+            document.querySelectorAll('#shop-types input').forEach((input) => input.addEventListener('input', renderShops));
+        }
+
+        function renderShops() {
+            shopsLayer.clearLayers();
+            const show = document.getElementById('show-shops').checked;
+            document.getElementById('shop-types').hidden = !show || !shops;
+            document.getElementById('shop-walk-row').hidden = !show || !shops;
+            renderShopWalk();
+            if (!show || !shops) return;
+            const on = new Set([...document.querySelectorAll('#shop-types input:checked')].map((i) => i.dataset.type));
+            for (const f of shops.features) {
+                const p = f.properties;
+                if (!on.has(p.store_type)) continue;
+                const [lon, lat] = f.geometry.coordinates;
+                L.marker([lat, lon], {
+                    pane: 'shops',
+                    icon: L.divIcon({ className: '', html: shopIcon(p.store_type, p.full_store), iconSize: [16, 16], iconAnchor: [8, 8] }),
+                    zIndexOffset: p.full_store ? 0 : 100,  // small formats on top so they aren't hidden
+                })
+                    .bindTooltip(`${escapeHtml(p.name)}${p.full_store ? '' : ' (small format)'}`, { direction: 'top', offset: [0, -8] })
+                    .bindPopup(shopPopupHtml(p), { maxWidth: 280 })
+                    .addTo(shopsLayer);
+            }
+        }
+
+        // Fetch the precomputed 10-min walking areas once; resolves to the store id -> Feature map
+        function loadShopWalkAreas() {
+            if (!shopWalkLoading) {
+                setShopsStatus('Loading supermarket walking areas…');
+                shopWalkLoading = fetch('/api/supermarkets/isochrones').then(async (res) => {
+                    const body = await res.json();
+                    if (!res.ok) throw new Error(body.hint ? `${body.error} ${body.hint}` : body.error);
+                    shopWalkAreas = Object.fromEntries(
+                        body.features
+                            .filter((f) => !f.properties.fallback_circle)  // outside the walking graph
+                            .map((f) => [f.properties.id, f]),
+                    );
+                    return shopWalkAreas;
+                }).catch((err) => {
+                    shopWalkLoading = null;
+                    setShopsStatus(`Couldn't load supermarket walking areas: ${err.message}`, true);
+                    throw err;
+                });
+            }
+            return shopWalkLoading;
+        }
+
+        function shopWalkStyle(f) {
+            const color = SHOP_STYLE[f.properties.store_type].color;
+            return f.properties.full_store
+                ? { color, weight: 1, opacity: 0.5, fillColor: color, fillOpacity: 0.08, dashArray: null }
+                : { color, weight: 1.5, opacity: 0.7, dashArray: '4 4', fillColor: color, fillOpacity: 0.03 };
+        }
+
+        function renderShopWalk() {
+            shopWalkLayer.clearLayers();
+            forgetAreas('store');
+            const show = document.getElementById('show-shops').checked && document.getElementById('show-shop-walk').checked;
+            if (!show || !shops || !shopWalkAreas) {
+                applySelection();
+                if (shops) setShopsStatus(shopsSourceNote());
+                return;
+            }
+            const on = new Set([...document.querySelectorAll('#shop-types input:checked')].map((i) => i.dataset.type));
+            const features = shops.features
+                .filter((f) => on.has(f.properties.store_type) && shopWalkAreas[f.properties.id])
+                .map((f) => shopWalkAreas[f.properties.id]);
+            L.geoJSON({ type: 'FeatureCollection', features }, {
+                pane: 'shopwalk',
+                style: shopWalkStyle,
+                onEachFeature: (f, layer) => {
+                    const label = `10-min walk from ${f.properties.name}`;
+                    layer.bindTooltip(escapeHtml(label), { sticky: true });
+                    registerArea(`store:${f.properties.id}`, layer, shopWalkStyle(f), label);
+                },
+            }).addTo(shopWalkLayer);
+            applySelection();
+            const missing = shops.features.filter((f) => on.has(f.properties.store_type)).length - features.length;
+            setShopsStatus(`10-min walking areas (1.4 m/s) for ${features.length} stores` +
+                (missing ? `; ${missing} outside the walking graph (Newcastle, Central Coast etc.) have none.` : '.') +
+                ` ${AREA_HINT}`);
+        }
+
+        async function loadShops() {
+            try {
+                const res = await fetch('/api/supermarkets');
+                const body = await res.json();
+                if (!res.ok) throw new Error(body.hint ? `${body.error} ${body.hint}` : body.error);
+                shops = body;
+                buildShopTypes();
+                setShopsStatus(shopsSourceNote());
+                renderShops();
+            } catch (err) {
+                setShopsStatus(`Couldn't load supermarkets: ${err.message}`, true);
+            }
         }
 
         function exportRows() {
@@ -739,10 +1105,23 @@
         });
 
         document.getElementById('show-all').addEventListener('input', render);
+        document.getElementById('show-shops').addEventListener('input', renderShops);
+        document.getElementById('show-shop-walk').addEventListener('input', async (e) => {
+            if (!e.target.checked) {
+                renderShopWalk();
+                return;
+            }
+            try {
+                await loadShopWalkAreas();
+                renderShopWalk();
+            } catch {
+                e.target.checked = false;
+            }
+        });
 
         document.getElementById('show-walk').addEventListener('input', async (e) => {
             if (!e.target.checked) {
-                walkLayer.clearLayers();
+                renderWalk();
                 setWalkStatus('');
                 return;
             }
@@ -792,6 +1171,7 @@
                 render();
                 status.hidden = true;
                 document.getElementById('controls').hidden = false;
+                loadShops();
             } catch (err) {
                 status.className = 'error';
                 status.textContent = `Couldn't load travel times: ${err.message}`;

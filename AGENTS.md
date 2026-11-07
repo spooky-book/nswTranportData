@@ -72,7 +72,9 @@ nswTranportData/
 │   │   ├── trip_stats.py         # POST /api/trip-stats  (also owns _time_to_seconds)
 │   │   ├── trips.py              # POST /api/trips       (journey planner with transfers)
 │   │   ├── isochrone.py          # POST /api/isochrone, GET /api/network
-│   │   └── rail_network.py       # GET  /api/rail-network (stations + line geometry for the transport map)
+│   │   ├── rail_network.py       # GET  /api/rail-network (stations + line geometry for the transport map)
+│   │   ├── property_locator.py   # GET  /api/property-locator (+ /isochrones); temporary, see §4.1a
+│   │   └── supermarkets.py       # GET  /api/supermarkets (Coles/Woolworths/Aldi, small formats flagged)
 │   ├── gtfs/
 │   │   ├── __init__.py
 │   │   ├── downloader.py         # Downloads & caches GTFS zips from TfNSW (per Sydney date)
@@ -83,17 +85,26 @@ nswTranportData/
 │   └── templates/
 │       ├── home.html             # Home page (links to maps and API)
 │       ├── transport_map.html    # Transport Map UI (Leaflet from unpkg CDN)
-│       └── isochrone_map.html    # Isochrone Explorer UI (Leaflet + Turf.js from unpkg CDN)
+│       ├── isochrone_map.html    # Isochrone Explorer UI (Leaflet + Turf.js from unpkg CDN)
+│       └── property_locator.html # Desirable Property Locator (temporary, see §4.1a)
 │
 ├── scripts/                      # Standalone scripts (see §6)
 │   ├── download_graph.py
+│   ├── make_walk_graph_bidirectional.py
+│   ├── download_pathways.py
+│   ├── download_supermarkets.py
+│   ├── generate_supermarket_walk_areas.py
+│   ├── generate_property_isochrones.py
 │   ├── generate_station_isochrones.py
 │   ├── generate_supermarket_isochrones.py
 │   └── all_to_central.py
 │
 ├── data/                         # Mostly git-ignored (see .gitignore)
 │   ├── schedule-gtfs/<YYYY-MM-DD>/<cache_folder>/gtfs_schedule.zip   # GTFS cache (ignored)
-│   └── osmnx/sydney_walk.graphml # ~565 MB walking graph, tracked with Git LFS
+│   ├── osmnx/sydney_walk.graphml # ~565 MB walking graph, tracked with Git LFS
+│   ├── pathways/<YYYY-MM-DD>/pathways.txt  # from scripts/download_pathways.py (ignored)
+│   ├── property_locator/station_isochrones_15min_walk.geojson  # (ignored)
+│   └── supermarkets/             # supermarkets.geojson + supermarket_isochrones_10min_walk.geojson (ignored)
 │
 ├── maps/gtfs_shapes_sydneyTrains.html   # Legacy Folium output (see §12)
 ├── *.geojson                     # Committed outputs of the isochrone scripts
@@ -114,7 +125,8 @@ nswTranportData/
 ### 4.1 `src/app.py`: Application Factory
 
 - `create_app()` registers `stations_bp`, `stops_bp`, `stop_stats_bp`, `trip_stats_bp`,
-  `trips_bp`, `isochrone_bp` and `rail_network_bp` (all use `url_prefix="/api"`), plus `pages_bp` (no prefix).
+  `trips_bp`, `isochrone_bp`, `rail_network_bp`, `property_locator_bp` and `supermarkets_bp` (all use
+  `url_prefix="/api"`), plus `pages_bp` (no prefix).
 - `GET /api` returns a hand-maintained JSON index of endpoints and pages. Update it when you add one.
 - `uv run python src/app.py` runs with `debug=True` on `FLASK_PORT`.
 
@@ -133,9 +145,20 @@ nswTranportData/
   Chatswood. Limits (default time/frequency 30/10 peak, 40/20 interpeak, 40/20 off-peak; blank = ignored) are
   applied in the browser.
   - 15-min walking areas for matching stations come from `GET /api/property-locator/isochrones`, a file precomputed by
-    `scripts/generate_property_isochrones.py` (~8 min for all 387 stations, via `compute_isochrone()` in
-    `api/isochrone.py`). It's precomputed so the server never has to hold the multi-GB walking graph; the page hides
-    `fallback_circle` features (stations outside the graph, e.g. Newcastle/Central Coast).
+    `scripts/generate_property_isochrones.py` (~2 min plus a ~1 min graph load; 196 of the 387 stations are inside the graph; via `compute_isochrone()` in
+    `api/isochrone.py`). It's precomputed so the server never has to hold the multi-GB walking graph. Stations outside
+    the graph (Newcastle, Central Coast, Wollongong, upper Blue Mountains, ...) have no feature; the page also hides any
+    `fallback_circle` features.
+  - Supermarkets come from the general `GET /api/supermarkets` (on by default, per-type toggles). Full stores are solid
+    lettered squares in the chain colour; Coles Local / Woolworths Metro are white squares with a dashed border.
+    A sub-toggle draws the 10-min store walking areas for the ticked store types (small formats dashed).
+  - Station walking areas are violet (`STATION_WALK_COLOR`, #7C3AED) so they don't blend with Woolworths green.
+  - Clicking a walking area (station or store) selects it: a dark outline, brought to the front, with a small label
+    popup. Clicking again at the same spot cycles through every area under that point (point-in-polygon in JS,
+    station areas first); clicking the map or pressing Escape clears it. Other areas keep their normal style (the
+    user didn't want them dimmed).
+- All three map pages hide the browser's rectangular focus outline on clicked SVG paths (it drew a huge box around
+  the whole area) and show a thicker stroke on keyboard focus (`:focus-visible`) instead.
 - Templates link to each other with `url_for('pages.<endpoint>')`. Both map pages load `static/basemaps.js` and call
   `addBasemaps(map)` for the basemap switcher (Esri Light Gray default, OSM, CyclOSM, NSW Imagery; all keyless —
   CARTO tiles now need an API key, which is why they were dropped).
@@ -256,21 +279,25 @@ nswTranportData/
 
 - `get_graph()` lazily loads `data/osmnx/sydney_walk.graphml` into a module-level global under a lock and
   precomputes node `penalty_sec`: 30 s at `traffic_signals`, 10 s at `crossing`. Paths are resolved from
-  `__file__` (`GRAPH_PATH` lives in this module, not `config.py`).
+  `__file__` (`GRAPH_PATH` lives in this module, not `config.py`). It also builds the snapping index (below).
 - `POST /api/isochrone`: body `{lat, lon, speed=1.4 m/s, max_duration_minutes=15, resolution="high"}`.
   The calculation lives in `compute_isochrone(G, lat, lon, speed, max_duration_minutes, resolution)`, which scripts can
-  call directly with `get_graph()`. Finds the nearest node, runs `nx.single_source_dijkstra_path_length` with a weight of
+  call directly with `get_graph()`. Snaps the origin with `snap_to_graph()`: a haversine `BallTree` (scikit-learn) over
+  nodes in connected pieces of at least `MIN_COMPONENT_NODES` (1000), so points inside shopping centres don't land on
+  an isolated car-park path. More than `MAX_SNAP_METERS` (300 m) from that network raises `LookupError` (the route
+  returns 404): the point is outside the graph, which covers only the "Sydney" OSM area. Before this check, such points
+  snapped to a node on the graph's edge kilometres away and got a wrong area. Then runs `nx.single_source_dijkstra_path_length` with a weight of
   `length / speed + penalty_sec(v)`, cut off at the time budget, then builds a polygon:
   - `ultra` / `high`: shapely `concave_hull` over the reachable nodes plus edge-geometry points (ratio 0.15 / 0.35).
   - `low`: convex hull of the reachable nodes.
   - With fewer than 3 points it returns a buffered circle and sets `fallback_circle: true`.
-  Returns `{lat, lon, speed, max_duration_minutes, resolution, isochrone: <GeoJSON Polygon>, ...}`.
+  Returns `{lat, lon, speed, max_duration_minutes, resolution, reachable_nodes, fallback_circle, snap_distance_m,
+  isochrone: <GeoJSON Polygon>}`.
 - The graph is bidirectional (every edge has a reverse; `oneway` is False everywhere). Rebuilds must keep
   `network_type="walk"` in `download_graph.py`, or run `scripts/make_walk_graph_bidirectional.py` afterwards.
 - Every `crossing` node adds 10 s even when walking straight along a road past it (65,868 such nodes), which likely
-  makes isochrones noticeably smaller than a real walk in dense areas; not yet measured or tuned.
-- **Hidden dependency:** `scikit-learn` is never imported directly, but `osmnx.distance.nearest_nodes`
-  needs it for this unprojected graph.
+  makes isochrones smaller than a real walk. Measured 2026-10-25: dropping it grows 10-min store areas by ~15% (median;
+  up to +59%) and 15-min station areas by ~9% (up to +24%). Not tuned yet.
 - The UI is `GET /map/isochrone` (served by `pages.py`), `templates/isochrone_map.html`, a single file with inline JS
   that loads Leaflet 1.9.4 and Turf 6 from unpkg. The UI calls `/api/isochrone` and `/api/network`, can toggle the
   street network overlay, import/export GeoJSON layers, and union, intersect or XOR layers with Turf.
@@ -293,6 +320,25 @@ nswTranportData/
   because some shapes jump straight to a far terminus (e.g. Broken Hill → Perth) with no track geometry in between.
 - Cached per process like the feeds (double-checked locking); the first call takes ~10 s after the feeds are loaded.
 
+### 4.13 `src/api/supermarkets.py`: `GET /api/supermarkets` (independent of GTFS)
+
+- Serves `data/supermarkets/supermarkets.geojson` (re-read on each request, so a re-download needs no restart);
+  404 with a hint until `scripts/download_supermarkets.py` has run. `?full_store=true|false` filters.
+- Each Point feature has `name`, `chain` (Coles/Woolworths/Aldi), `store_type` (`coles`, `coles_local`, `woolworths`,
+  `woolworths_metro`, `aldi`), `full_store` (False for the small formats, which have a narrower range and usually
+  higher prices), `address`, `opening_hours` (OSM syntax), `website`. Full schema in the module docstring.
+- `GET /api/supermarkets/isochrones` serves `data/supermarkets/supermarket_isochrones_10min_walk.geojson`: a 10-min
+  walking isochrone (1.4 m/s, `compute_isochrone()`) per store, keyed by the same `id`, precomputed by
+  `scripts/generate_supermarket_walk_areas.py` so the server never loads the walking graph. 10 min (~800 m) is the
+  usual limit for walking to the shops and carrying groceries home. Re-run the script (after deleting the file)
+  whenever the store list is re-downloaded.
+- Source is [AllThePlaces](https://www.alltheplaces.xyz/) (CC0; weekly scrapes of each retailer's store locator,
+  spiders `coles_au`, `woolworths_au`, `aldi_sud_au`), not OSM: OSM tags most Coles Locals as plain "Coles".
+  The script classifies Coles branches starting "Coles Local" or "Coles Central" (the older small-format name) as
+  `coles_local`, uses the `Woolworths Metro` brand, drops Liquorland etc. and Woolworths fulfilment centres (CFC), and
+  keeps a bbox covering Sydney and the intercity network. 624 stores as of the 2026-10-17 run.
+- `scripts/generate_supermarket_isochrones.py` is older and still finds stores from OSM by name.
+
 ---
 
 ## 5. Data Flow
@@ -310,17 +356,25 @@ TfNSW GTFS API ──(HTTPS + apikey)──► gtfs/downloader.py ──► data
                                                      /map/transport UI (via /api/rail-network)
 
 OSM (osmnx) ──► scripts/download_graph.py ──► data/osmnx/sydney_walk.graphml ──► api/isochrone.py ──► /map/isochrone UI
+                                                              │
+                                                              └──► scripts/generate_property_isochrones.py,
+                                                                   generate_supermarket_walk_areas.py (own process)
+                                                                   ──► data/property_locator/, data/supermarkets/
 
-scripts/generate_*_isochrones.py, scripts/all_to_central.py ──(HTTP to localhost:5000)──► *.geojson / *.csv
+AllThePlaces ──► scripts/download_supermarkets.py ──► data/supermarkets/supermarkets.geojson ──► api/supermarkets.py
+
+scripts/generate_station_isochrones.py, generate_supermarket_isochrones.py, all_to_central.py ──(HTTP to localhost:5000)──► *.geojson / *.csv
 ```
 
 ---
 
 ## 6. Scripts (`scripts/`)
 
-Run them from the project root. Every script except `download_graph.py` is an HTTP client of the running server
-(`API_BASE_URL = "http://localhost:5000/api"`) and writes its output to the current directory, which is where the
-output files at the repo root came from. The GeoJSON files are meant to be loaded into the map UI.
+Run them from the project root. The older generators (`generate_station_isochrones.py`,
+`generate_supermarket_isochrones.py`, `all_to_central.py`) are HTTP clients of the running server
+(`API_BASE_URL = "http://localhost:5000/api"`) and write their output to the current directory, which is where the
+output files at the repo root came from. The newer ones write under `data/`, and most don't need the server; the
+table says which do. The GeoJSON files are meant to be loaded into the map UI.
 Configuration is hard-coded as constants at the top of each file.
 
 | Script | What it does |
@@ -331,6 +385,8 @@ Configuration is hard-coded as constants at the top of each file.
 | `generate_supermarket_isochrones.py` | Uses OSM to find Coles, Woolworths and Aldi stores, then builds an isochrone for each. Writes `supermarket_isochrones.geojson`. |
 | `all_to_central.py` | Stats from every `sydney_trains` and `sydney_metro` station to Central (`200060`). Writes `stats_to_destination_*.csv`. **Currently broken** (see §11). |
 | `generate_property_isochrones.py` | *Temporary page support.* Loads the walking graph in its own process and writes a 15-min walking isochrone for every train/metro station to `data/property_locator/station_isochrones_15min_walk.geojson` (resumable). Gets station coordinates from the running server's `/api/rail-network`. |
+| `download_supermarkets.py` | Downloads Coles, Woolworths and Aldi locations from the latest AllThePlaces run, classifies Coles Local / Woolworths Metro as small formats, keeps the Sydney + intercity bbox, and writes `data/supermarkets/supermarkets.geojson` for `/api/supermarkets`. No API key or running server needed; ~10 s. |
+| `generate_supermarket_walk_areas.py` | Loads the walking graph in its own process and writes a 10-min walking isochrone for every store in `data/supermarkets/supermarkets.geojson` to `data/supermarkets/supermarket_isochrones_10min_walk.geojson` (resumable; delete the file after re-downloading stores). Not an HTTP client of the server. |
 | `download_pathways.py` | Downloads TfNSW's complete GTFS bundle (~300 MB, needs the API key) and keeps only `pathways.txt` as `data/pathways/<date>/pathways.txt`; `--from-zip PATH` extracts from a bundle you already have. Not an HTTP client of the server; restart the server afterwards. |
 
 ---
@@ -347,7 +403,7 @@ The project uses **[uv](https://docs.astral.sh/uv/)** (`pyproject.toml`, `uv.loc
 | requests, tqdm | TfNSW downloads with progress; script HTTP clients |
 | osmnx, networkx | Walking graph download/load and Dijkstra |
 | shapely | Concave/convex hull isochrone polygons |
-| scikit-learn | Required by `osmnx.distance.nearest_nodes` for unprojected graphs |
+| scikit-learn | `BallTree` for snapping isochrone origins onto the walking graph |
 | ruff | Lint and format |
 
 **Installed but unused by current code:** `folium` and `branca` (left over from the old map generator), `partridge`, and `pyarrow` (not imported directly).
@@ -424,6 +480,7 @@ To add a mode, add an entry to `TRANSPORT_MODES` in `src/config.py`, then update
 - `/api/trips` falls back to a flat 180 s transfer at the ~110 train/metro stations without pathway data, and does
   not model walking transfers between different stations (e.g. Town Hall ↔ Gadigal).
 - `data/pathways/` must be refreshed by hand (`scripts/download_pathways.py`); nothing re-downloads it automatically.
+  The same goes for `data/supermarkets/` (`scripts/download_supermarkets.py`).
 - `get_feed` caches feeds for the life of the process, so a long-running server keeps serving the day it first loaded.
 - The isochrone graph path is hard-coded in `api/isochrone.py` rather than defined in `config.py`.
 - `/api/isochrone` does not validate `speed`, `max_duration_minutes` or `resolution`; bad values raise 500s.
